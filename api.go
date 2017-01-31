@@ -35,11 +35,15 @@ import (
 	"time"
 
 	"github.com/minio/minio-go/pkg/s3signer"
+	"github.com/minio/minio-go/pkg/s3utils"
 )
 
 // Client implements Amazon S3 compatible methods.
 type Client struct {
 	///  Standard options.
+
+	// Parsed endpoint url provided by the user.
+	endpointURL url.URL
 
 	// AccessKeyID required for authorized requests.
 	accessKeyID string
@@ -55,7 +59,6 @@ type Client struct {
 		appName    string
 		appVersion string
 	}
-	endpointURL string
 
 	// Indicate whether we are using https or not
 	secure bool
@@ -68,6 +71,9 @@ type Client struct {
 	isTraceEnabled bool
 	traceOutput    io.Writer
 
+	// S3 specific accelerated endpoint.
+	s3AccelerateEndpoint string
+
 	// Random seed.
 	random *rand.Rand
 }
@@ -75,7 +81,7 @@ type Client struct {
 // Global constants.
 const (
 	libraryName    = "minio-go"
-	libraryVersion = "2.0.2"
+	libraryVersion = "2.0.3"
 )
 
 // User Agent should always following the below style.
@@ -118,13 +124,12 @@ func New(endpoint string, accessKeyID, secretAccessKey string, secure bool) (*Cl
 	if err != nil {
 		return nil, err
 	}
-	// Google cloud storage should be set to signature V2, force it if
-	// not.
-	if isGoogleEndpoint(clnt.endpointURL) {
+	// Google cloud storage should be set to signature V2, force it if not.
+	if s3utils.IsGoogleEndpoint(clnt.endpointURL) {
 		clnt.signature = SignatureV2
 	}
 	// If Amazon S3 set to signature v2.n
-	if isAmazonEndpoint(clnt.endpointURL) {
+	if s3utils.IsAmazonEndpoint(clnt.endpointURL) {
 		clnt.signature = SignatureV4
 	}
 	return clnt, nil
@@ -184,7 +189,7 @@ func privateNew(endpoint, accessKeyID, secretAccessKey string, secure bool) (*Cl
 	clnt.secure = secure
 
 	// Save endpoint URL, user agent for future uses.
-	clnt.endpointURL = endpointURL.String()
+	clnt.endpointURL = *endpointURL
 
 	// Instantiate http client and bucket location cache.
 	clnt.httpClient = &http.Client{
@@ -204,8 +209,7 @@ func privateNew(endpoint, accessKeyID, secretAccessKey string, secure bool) (*Cl
 
 // SetAppInfo - add application details to user agent.
 func (c *Client) SetAppInfo(appName string, appVersion string) {
-	// if app name and version is not set, we do not a new user
-	// agent.
+	// if app name and version not set, we do not set a new user agent.
 	if appName != "" && appVersion != "" {
 		c.appInfo = struct {
 			appName    string
@@ -256,8 +260,18 @@ func (c *Client) TraceOff() {
 	c.isTraceEnabled = false
 }
 
-// requestMetadata - is container for all the values to make a
-// request.
+// SetS3TransferAccelerate - turns s3 accelerated endpoint on or off for all your
+// requests. This feature is only specific to S3 for all other endpoints this
+// function does nothing. To read further details on s3 transfer acceleration
+// please vist -
+// http://docs.aws.amazon.com/AmazonS3/latest/dev/transfer-acceleration.html
+func (c *Client) SetS3TransferAccelerate(accelerateEndpoint string) {
+	if s3utils.IsAmazonEndpoint(c.endpointURL) {
+		c.s3AccelerateEndpoint = accelerateEndpoint
+	}
+}
+
+// requestMetadata - is container for all the values to make a request.
 type requestMetadata struct {
 	// If set newRequest presigns the URL.
 	presignURL bool
@@ -276,6 +290,12 @@ type requestMetadata struct {
 	contentSHA256Bytes []byte
 	contentMD5Bytes    []byte
 }
+
+// regCred matches credential string in HTTP header
+var regCred = regexp.MustCompile("Credential=([A-Z0-9]+)/")
+
+// regCred matches signature string in HTTP header
+var regSign = regexp.MustCompile("Signature=([[0-9a-f]+)")
 
 // Filter out signature value from Authorization header.
 func (c Client) filterSignature(req *http.Request) {
@@ -296,11 +316,9 @@ func (c Client) filterSignature(req *http.Request) {
 	origAuth := req.Header.Get("Authorization")
 	// Strip out accessKeyID from:
 	// Credential=<access-key-id>/<date>/<aws-region>/<aws-service>/aws4_request
-	regCred := regexp.MustCompile("Credential=([A-Z0-9]+)/")
 	newAuth := regCred.ReplaceAllString(origAuth, "Credential=**REDACTED**/")
 
 	// Strip out 256-bit signature from: Signature=<256-bit signature>
-	regSign := regexp.MustCompile("Signature=([[0-9a-f]+)")
 	newAuth = regSign.ReplaceAllString(newAuth, "Signature=**REDACTED**")
 
 	// Set a temporary redacted auth
@@ -544,7 +562,7 @@ func (c Client) newRequest(method string, metadata requestMetadata) (req *http.R
 
 	// Default all requests to "us-east-1" or "cn-north-1" (china region)
 	location := "us-east-1"
-	if isAmazonChinaEndpoint(c.endpointURL) {
+	if s3utils.IsAmazonChinaEndpoint(c.endpointURL) {
 		// For china specifically we need to set everything to
 		// cn-north-1 for now, there is no easier way until AWS S3
 		// provides a cleaner compatible API across "us-east-1" and
@@ -595,10 +613,10 @@ func (c Client) newRequest(method string, metadata requestMetadata) (req *http.R
 		req.Body = ioutil.NopCloser(metadata.contentBody)
 	}
 
-	// FIXEM: Enable this when Google Cloud Storage properly supports 100-continue.
+	// FIXME: Enable this when Google Cloud Storage properly supports 100-continue.
 	// Skip setting 'expect' header for Google Cloud Storage, there
 	// are some known issues - https://github.com/restic/restic/issues/520
-	if !isGoogleEndpoint(c.endpointURL) {
+	if !s3utils.IsGoogleEndpoint(c.endpointURL) && c.s3AccelerateEndpoint == "" {
 		// Set 'Expect' header for the request.
 		req.Header.Set("Expect", "100-continue")
 	}
@@ -663,26 +681,34 @@ func (c Client) setUserAgent(req *http.Request) {
 
 // makeTargetURL make a new target url.
 func (c Client) makeTargetURL(bucketName, objectName, bucketLocation string, queryValues url.Values) (*url.URL, error) {
-	// Save host.
-	url, err := url.Parse(c.endpointURL)
-	if err != nil {
-		return nil, err
-	}
-	host := url.Host
+	host := c.endpointURL.Host
 	// For Amazon S3 endpoint, try to fetch location based endpoint.
-	if isAmazonEndpoint(c.endpointURL) {
-		// Fetch new host based on the bucket location.
-		host = getS3Endpoint(bucketLocation)
+	if s3utils.IsAmazonEndpoint(c.endpointURL) {
+		if c.s3AccelerateEndpoint != "" && bucketName != "" {
+			// http://docs.aws.amazon.com/AmazonS3/latest/dev/transfer-acceleration.html
+			// Disable transfer acceleration for non-compliant bucket names.
+			if strings.Contains(bucketName, ".") {
+				return nil, ErrTransferAccelerationBucket(bucketName)
+			}
+			// If transfer acceleration is requested set new host.
+			// For more details about enabling transfer acceleration read here.
+			// http://docs.aws.amazon.com/AmazonS3/latest/dev/transfer-acceleration.html
+			host = c.s3AccelerateEndpoint
+		} else {
+			// Fetch new host based on the bucket location.
+			host = getS3Endpoint(bucketLocation)
+		}
 	}
+
 	// Save scheme.
-	scheme := url.Scheme
+	scheme := c.endpointURL.Scheme
 
 	urlStr := scheme + "://" + host + "/"
 	// Make URL only if bucketName is available, otherwise use the
 	// endpoint URL.
 	if bucketName != "" {
 		// Save if target url will have buckets which suppport virtual host.
-		isVirtualHostStyle := isVirtualHostSupported(c.endpointURL, bucketName)
+		isVirtualHostStyle := s3utils.IsVirtualHostSupported(c.endpointURL, bucketName)
 
 		// If endpoint supports virtual host style use that always.
 		// Currently only S3 and Google Cloud Storage would support
@@ -690,19 +716,19 @@ func (c Client) makeTargetURL(bucketName, objectName, bucketLocation string, que
 		if isVirtualHostStyle {
 			urlStr = scheme + "://" + bucketName + "." + host + "/"
 			if objectName != "" {
-				urlStr = urlStr + urlEncodePath(objectName)
+				urlStr = urlStr + s3utils.EncodePath(objectName)
 			}
 		} else {
 			// If not fall back to using path style.
 			urlStr = urlStr + bucketName + "/"
 			if objectName != "" {
-				urlStr = urlStr + urlEncodePath(objectName)
+				urlStr = urlStr + s3utils.EncodePath(objectName)
 			}
 		}
 	}
 	// If there are any query values, add them to the end.
 	if len(queryValues) > 0 {
-		urlStr = urlStr + "?" + queryEncode(queryValues)
+		urlStr = urlStr + "?" + s3utils.QueryEncode(queryValues)
 	}
 	u, err := url.Parse(urlStr)
 	if err != nil {
