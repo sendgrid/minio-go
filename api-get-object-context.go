@@ -1,5 +1,6 @@
 /*
- * Minio Go Library for Amazon S3 Compatible Cloud Storage (C) 2015 Minio, Inc.
+ * Minio Go Library for Amazon S3 Compatible Cloud Storage
+ * Copyright 2017 Minio, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,22 +17,10 @@
 
 package minio
 
-// SignatureType is type of Authorization requested for a given HTTP request.
-type SignatureType int
+import "context"
 
-// Different types of supported signatures - default is Latest i.e SignatureV4.
-const (
-	Latest SignatureType = iota
-	SignatureV4
-	SignatureV2
-)
-
-// isV2 - is signature SignatureV2?
-func (s SignatureType) isV2() bool {
-	return s == SignatureV2
-}
-
-// isV4 - is signature SignatureV4?
-func (s SignatureType) isV4() bool {
-	return s == SignatureV4 || s == Latest
+// GetObjectWithContext - returns an seekable, readable object.
+// The options can be used to specify the GET request further.
+func (c Client) GetObjectWithContext(ctx context.Context, bucketName, objectName string, opts GetObjectOptions) (*Object, error) {
+	return c.getObjectWithContext(ctx, bucketName, objectName, opts)
 }

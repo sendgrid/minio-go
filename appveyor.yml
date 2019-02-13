@@ -16,15 +16,17 @@ install:
   - set PATH=%GOPATH%\bin;c:\go\bin;%PATH%
   - go version
   - go env
-  - go get -u github.com/golang/lint/golint
+  - go get -u golang.org/x/lint/golint
   - go get -u github.com/remyoudompheng/go-misc/deadcode
   - go get -u github.com/gordonklaus/ineffassign
+  - go get -u golang.org/x/crypto/argon2
+  - go get -t ./...
 
 # to run your custom scripts instead of automatic MSBuild
 build_script:
   - go vet ./...
   - gofmt -s -l .
-  - golint github.com/minio/minio-go...
+  - golint -set_exit_status github.com/minio/minio-go...
   - deadcode
   - ineffassign .
   - go test -short -v

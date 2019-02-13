@@ -1,7 +1,8 @@
 // +build ignore
 
 /*
- * Minio Go Library for Amazon S3 Compatible Cloud Storage (C) 2015, 2016 Minio, Inc.
+ * Minio Go Library for Amazon S3 Compatible Cloud Storage
+ * Copyright 2015-2017 Minio, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,7 +20,10 @@
 package main
 
 import (
+	"io"
 	"log"
+	"os"
+	"strings"
 
 	"github.com/minio/minio-go"
 )
@@ -40,17 +44,22 @@ func main() {
 
 	// s3Client.TraceOn(os.Stderr)
 
-	// Fetch the policy at 'my-objectprefix'.
-	policies, err := s3Client.ListBucketPolicies("my-bucketname", "my-objectprefix")
+	// Get bucket lifecycle from S3
+	lifecycle, err := s3Client.GetBucketLifecycle("my-bucketname")
 	if err != nil {
 		log.Fatalln(err)
 	}
 
-	// ListBucketPolicies returns a map of objects policy rules and their associated permissions
-	//    e.g.    mybucket/downloadfolder/* => readonly
-	//	      mybucket/shared/* => readwrite
+	// Create lifecycle file
+	localLifecycleFile, err := os.Create("lifecycle.json")
+	if err != nil {
+		log.Fatalln(err)
+	}
+	defer localLifecycleFile.Close()
 
-	for resource, permission := range policies {
-		log.Println(resource, " => ", permission)
+	lifecycleReader := strings.NewReader(lifecycle)
+
+	if _, err := io.Copy(localLifecycleFile, lifecycleReader); err != nil {
+		log.Fatalln(err)
 	}
 }
