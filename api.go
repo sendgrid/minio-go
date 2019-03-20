@@ -186,6 +186,34 @@ func NewWithOptions(endpoint string, opts *Options) (*Client, error) {
 	return privateNew(endpoint, opts.Creds, opts.Secure, opts.Region, opts.BucketLookup)
 }
 
+// UseHostPicker makes the client ignore endpointUrl instead uses the hostPicker passed in
+func (c *Client) UseHostPicker(hostPicker func() string) {
+	c.SetCustomTransport(
+		&http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+			DialContext: func(ctx context.Context, network string, address string) (net.Conn, error) {
+				d := net.Dialer{
+					Timeout:   30 * time.Second,
+					KeepAlive: 30 * time.Second}
+				return d.Dial("tcp", hostPicker())
+			},
+			MaxIdleConns:          100,
+			MaxIdleConnsPerHost:   100,
+			IdleConnTimeout:       90 * time.Second,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+
+			// Set this value so that the underlying transport round-tripper
+			// doesn't try to auto decode the body of objects with
+			// content-encoding set to `gzip`.
+			//
+			// Refer:
+			//    https://golang.org/src/net/http/transport.go?h=roundTrip#L1843
+			DisableCompression: true,
+		},
+	)
+}
+
 // lockedRandSource provides protected rand source, implements rand.Source interface.
 type lockedRandSource struct {
 	lk  sync.Mutex
