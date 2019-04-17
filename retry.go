@@ -36,11 +36,11 @@ const NoJitter = 0.0
 
 // DefaultRetryUnit - default unit multiplicative per retry.
 // defaults to 1 second.
-const DefaultRetryUnit = time.Second
+var DefaultRetryUnit = time.Second
 
 // DefaultRetryCap - Each retry attempt never waits no longer than
 // this maximum time duration.
-const DefaultRetryCap = time.Second * 30
+var DefaultRetryCap = time.Second * 30
 
 // newRetryTimer creates a timer with exponentially increasing
 // delays until the maximum retry attempts are reached.
