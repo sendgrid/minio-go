@@ -259,6 +259,12 @@ type Object struct {
 	objectInfoSet bool
 }
 
+// GetObjectInfo returns the objectinfo without calling stat
+// it will only be there if it isn't the first request
+func (o *Object) GetObjectInfo() ObjectInfo {
+	return o.objectInfo
+}
+
 // doGetRequest - sends and blocks on the firstReqCh and reqCh of an object.
 // Returns back the size of the buffer read, if anything was read, as well
 // as any error encountered. For all first requests sent on the object
