@@ -24,7 +24,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sendgrid/minio-go/pkg/s3utils"
+	"github.com/sendgrid/minio-go/v2/pkg/s3utils"
 )
 
 // BucketExists verify if bucket exists and you have permission to access it.

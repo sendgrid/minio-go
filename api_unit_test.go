@@ -22,8 +22,8 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/sendgrid/minio-go/pkg/credentials"
-	"github.com/sendgrid/minio-go/pkg/policy"
+	"github.com/sendgrid/minio-go/v2/pkg/credentials"
+	"github.com/sendgrid/minio-go/v2/pkg/policy"
 )
 
 type customReader struct{}

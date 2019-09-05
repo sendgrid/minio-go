@@ -25,7 +25,7 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/sendgrid/minio-go/pkg/s3utils"
+	"github.com/sendgrid/minio-go/v2/pkg/s3utils"
 )
 
 // RemoveBucket deletes the bucket name.

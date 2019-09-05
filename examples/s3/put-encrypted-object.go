@@ -23,8 +23,8 @@ import (
 	"log"
 	"os"
 
-	"github.com/sendgrid/minio-go"
-	"github.com/sendgrid/minio-go/pkg/encrypt"
+	"github.com/sendgrid/minio-go/v2"
+	"github.com/sendgrid/minio-go/v2/pkg/encrypt"
 )
 
 func main() {

@@ -23,7 +23,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/sendgrid/minio-go"
+	"github.com/sendgrid/minio-go/v2"
 )
 
 func main() {

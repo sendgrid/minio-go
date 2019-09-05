@@ -23,7 +23,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/sendgrid/minio-go/pkg/set"
+	"github.com/sendgrid/minio-go/v2/pkg/set"
 )
 
 // BucketPolicy - Bucket level policy.

@@ -24,9 +24,9 @@ import (
 	"io/ioutil"
 	"log"
 
-	"github.com/sendgrid/minio-go/pkg/encrypt"
+	"github.com/sendgrid/minio-go/v2/pkg/encrypt"
 
-	minio "github.com/sendgrid/minio-go"
+	minio "github.com/sendgrid/minio-go/v2"
 )
 
 func main() {

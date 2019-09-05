@@ -28,8 +28,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sendgrid/minio-go/pkg/encrypt"
-	"github.com/sendgrid/minio-go/pkg/s3utils"
+	"github.com/sendgrid/minio-go/v2/pkg/encrypt"
+	"github.com/sendgrid/minio-go/v2/pkg/s3utils"
 )
 
 // DestinationInfo - type with information about the object to be
