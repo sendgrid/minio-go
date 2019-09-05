@@ -25,7 +25,7 @@ import (
 	"log"
 	"os"
 
-	minio "github.com/minio/minio-go"
+	minio "github.com/sendgrid/minio-go"
 )
 
 func main() {

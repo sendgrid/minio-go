@@ -1,4 +1,4 @@
-module github.com/minio/minio-go
+module github.com/sendgrid/minio-go
 
 require (
 	github.com/gopherjs/gopherjs v0.0.0-20181103185306-d547d1d9531e // indirect
@@ -12,3 +12,5 @@ require (
 	golang.org/x/text v0.3.0 // indirect
 	gopkg.in/ini.v1 v1.41.0
 )
+
+go 1.13
