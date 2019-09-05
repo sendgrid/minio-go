@@ -40,10 +40,10 @@ import (
 	"time"
 
 	humanize "github.com/dustin/go-humanize"
-	minio "github.com/minio/minio-go"
+	minio "github.com/sendgrid/minio-go/v2"
 	log "github.com/sirupsen/logrus"
 
-	"github.com/minio/minio-go/pkg/encrypt"
+	"github.com/sendgrid/minio-go/v2/pkg/encrypt"
 )
 
 const letterBytes = "abcdefghijklmnopqrstuvwxyz01234569"

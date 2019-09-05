@@ -25,7 +25,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/minio/minio-go"
+	"github.com/sendgrid/minio-go/v2"
 )
 
 func main() {

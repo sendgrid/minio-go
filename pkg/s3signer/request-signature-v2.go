@@ -30,7 +30,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/minio/minio-go/pkg/s3utils"
+	"github.com/sendgrid/minio-go/v2/pkg/s3utils"
 )
 
 // Signature and API related constants.

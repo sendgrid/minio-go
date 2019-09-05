@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/minio/minio-go/pkg/s3utils"
+	"github.com/sendgrid/minio-go/v2/pkg/s3utils"
 )
 
 // RemoveObjectWithContext is copied from RemoveObject, but it takes a context
