@@ -1,6 +1,6 @@
 /*
  * MinIO Go Library for Amazon S3 Compatible Cloud Storage
- * Copyright 2019 MinIO, Inc.
+ * Copyright 2019-2020 MinIO, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/minio/minio-go/v6/pkg/s3utils"
+	"github.com/minio/minio-go/v7/pkg/s3utils"
 )
 
 // objectRetention - object retention specified in
@@ -34,26 +34,23 @@ import (
 type objectRetention struct {
 	XMLNS           string        `xml:"xmlns,attr,omitempty"`
 	XMLName         xml.Name      `xml:"Retention"`
-	Mode            RetentionMode `xml:"Mode"`
-	RetainUntilDate time.Time     `type:"timestamp" timestampFormat:"iso8601" xml:"RetainUntilDate"`
+	Mode            RetentionMode `xml:"Mode,omitempty"`
+	RetainUntilDate *time.Time    `type:"timestamp" timestampFormat:"iso8601" xml:"RetainUntilDate,omitempty"`
 }
 
 func newObjectRetention(mode *RetentionMode, date *time.Time) (*objectRetention, error) {
-	if mode == nil {
-		return nil, fmt.Errorf("Mode not set")
+	objectRetention := &objectRetention{}
+
+	if date != nil && !date.IsZero() {
+		objectRetention.RetainUntilDate = date
+	}
+	if mode != nil {
+		if !mode.IsValid() {
+			return nil, fmt.Errorf("invalid retention mode `%v`", mode)
+		}
+		objectRetention.Mode = *mode
 	}
 
-	if date == nil {
-		return nil, fmt.Errorf("RetainUntilDate not set")
-	}
-
-	if !mode.IsValid() {
-		return nil, fmt.Errorf("invalid retention mode `%v`", mode)
-	}
-	objectRetention := &objectRetention{
-		Mode:            *mode,
-		RetainUntilDate: *date,
-	}
 	return objectRetention, nil
 }
 
@@ -65,8 +62,8 @@ type PutObjectRetentionOptions struct {
 	VersionID        string
 }
 
-// PutObjectRetention : sets object retention for a given object and versionID.
-func (c Client) PutObjectRetention(bucketName, objectName string, opts PutObjectRetentionOptions) error {
+// PutObjectRetention sets object retention for a given object and versionID.
+func (c Client) PutObjectRetention(ctx context.Context, bucketName, objectName string, opts PutObjectRetentionOptions) error {
 	// Input validation.
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
 		return err
@@ -115,7 +112,7 @@ func (c Client) PutObjectRetention(bucketName, objectName string, opts PutObject
 	}
 
 	// Execute PUT Object Retention.
-	resp, err := c.executeMethod(context.Background(), "PUT", reqMetadata)
+	resp, err := c.executeMethod(ctx, "PUT", reqMetadata)
 	defer closeResponse(resp)
 	if err != nil {
 		return err
@@ -129,7 +126,7 @@ func (c Client) PutObjectRetention(bucketName, objectName string, opts PutObject
 }
 
 // GetObjectRetention gets retention of given object.
-func (c Client) GetObjectRetention(bucketName, objectName, versionID string) (mode *RetentionMode, retainUntilDate *time.Time, err error) {
+func (c Client) GetObjectRetention(ctx context.Context, bucketName, objectName, versionID string) (mode *RetentionMode, retainUntilDate *time.Time, err error) {
 	// Input validation.
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
 		return nil, nil, err
@@ -144,7 +141,7 @@ func (c Client) GetObjectRetention(bucketName, objectName, versionID string) (mo
 		urlValues.Set("versionId", versionID)
 	}
 	// Execute GET on bucket to list objects.
-	resp, err := c.executeMethod(context.Background(), "GET", requestMetadata{
+	resp, err := c.executeMethod(ctx, "GET", requestMetadata{
 		bucketName:       bucketName,
 		objectName:       objectName,
 		queryValues:      urlValues,
@@ -164,5 +161,5 @@ func (c Client) GetObjectRetention(bucketName, objectName, versionID string) (mo
 		return nil, nil, err
 	}
 
-	return &retention.Mode, &retention.RetainUntilDate, nil
+	return &retention.Mode, retention.RetainUntilDate, nil
 }

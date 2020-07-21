@@ -2,7 +2,7 @@
 
 /*
  * MinIO Go Library for Amazon S3 Compatible Cloud Storage
- * Copyright 2015-2019 MinIO, Inc.
+ * Copyright 2020 MinIO, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,9 +20,12 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"log"
+	"os"
 
-	minio "github.com/minio/minio-go/v6"
+	"github.com/minio/minio-go/v7"
 )
 
 func main() {
@@ -38,10 +41,22 @@ func main() {
 	if err != nil {
 		log.Fatalln(err)
 	}
-
-	err = s3Client.MakeBucketWithObjectLock("my-bucketname", "us-east-1")
+	// s3Client.TraceOn(os.Stderr)
+	// Get bucket replication configuration from S3
+	replicationCfg, err := s3Client.GetBucketReplication(context.Background(), "my-bucketname")
 	if err != nil {
 		log.Fatalln(err)
 	}
-	log.Println("Success")
+	// Create replication config file
+	localReplicationCfgFile, err := os.Create("replication.xml")
+	if err != nil {
+		log.Fatalln(err)
+	}
+	defer localReplicationCfgFile.Close()
+
+	replBytes, err := json.Marshal(replicationCfg)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	localReplicationCfgFile.Write(replBytes)
 }

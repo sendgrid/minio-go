@@ -20,9 +20,10 @@
 package main
 
 import (
+	"context"
 	"log"
 
-	"github.com/minio/minio-go/v6"
+	"github.com/minio/minio-go/v7"
 )
 
 func main() {
@@ -41,18 +42,12 @@ func main() {
 
 	// s3Client.TraceOn(os.Stderr)
 
-	// Create a done channel to control 'ListenBucketNotification' go routine.
-	doneCh := make(chan struct{})
-
-	// Indicate to our routine to exit cleanly upon return.
-	defer close(doneCh)
-
 	// Listen for bucket notifications on "mybucket" filtered by prefix, suffix and events.
-	for notificationInfo := range minioClient.ListenBucketNotification("YOUR-BUCKET", "PREFIX", "SUFFIX", []string{
+	for notificationInfo := range minioClient.ListenBucketNotification(context.Background(), "YOUR-BUCKET", "PREFIX", "SUFFIX", []string{
 		"s3:ObjectCreated:*",
 		"s3:ObjectAccessed:*",
 		"s3:ObjectRemoved:*",
-	}, doneCh) {
+	}) {
 		if notificationInfo.Err != nil {
 			log.Fatalln(notificationInfo.Err)
 		}

@@ -23,18 +23,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"sync"
 
-	"github.com/minio/minio-go/v6/pkg/s3utils"
+	"github.com/minio/minio-go/v7/pkg/s3utils"
 )
 
-// GetObject - returns an seekable, readable object.
-func (c Client) GetObject(bucketName, objectName string, opts GetObjectOptions) (*Object, error) {
-	return c.getObjectWithContext(context.Background(), bucketName, objectName, opts)
-}
-
 // GetObject wrapper function that accepts a request context
-func (c Client) getObjectWithContext(ctx context.Context, bucketName, objectName string, opts GetObjectOptions) (*Object, error) {
+func (c Client) GetObject(ctx context.Context, bucketName, objectName string, opts GetObjectOptions) (*Object, error) {
 	// Input validation.
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
 		return nil, err
@@ -125,7 +121,7 @@ func (c Client) getObjectWithContext(ctx context.Context, bucketName, objectName
 
 						// Remove range header if already set, for stat Operations to get original file size.
 						delete(opts.headers, "Range")
-						objectInfo, err = c.statObject(ctx, bucketName, objectName, StatObjectOptions{opts})
+						objectInfo, err = c.statObject(ctx, bucketName, objectName, StatObjectOptions(opts))
 						if err != nil {
 							resCh <- getResponse{
 								Error: err,
@@ -148,7 +144,7 @@ func (c Client) getObjectWithContext(ctx context.Context, bucketName, objectName
 					if etag != "" && !snowball {
 						opts.SetMatchETag(etag)
 					}
-					objectInfo, err := c.statObject(ctx, bucketName, objectName, StatObjectOptions{opts})
+					objectInfo, err := c.statObject(ctx, bucketName, objectName, StatObjectOptions(opts))
 					if err != nil {
 						resCh <- getResponse{
 							Error: err,
@@ -322,7 +318,7 @@ func (o *Object) setOffset(bytesRead int64) error {
 // io.EOF upon end of file.
 func (o *Object) Read(b []byte) (n int, err error) {
 	if o == nil {
-		return 0, ErrInvalidArgument("Object is nil")
+		return 0, errInvalidArgument("Object is nil")
 	}
 
 	// Locking.
@@ -376,7 +372,7 @@ func (o *Object) Read(b []byte) (n int, err error) {
 // Stat returns the ObjectInfo structure describing Object.
 func (o *Object) Stat() (ObjectInfo, error) {
 	if o == nil {
-		return ObjectInfo{}, ErrInvalidArgument("Object is nil")
+		return ObjectInfo{}, errInvalidArgument("Object is nil")
 	}
 	// Locking.
 	o.mutex.Lock()
@@ -408,7 +404,7 @@ func (o *Object) Stat() (ObjectInfo, error) {
 // file, that error is io.EOF.
 func (o *Object) ReadAt(b []byte, offset int64) (n int, err error) {
 	if o == nil {
-		return 0, ErrInvalidArgument("Object is nil")
+		return 0, errInvalidArgument("Object is nil")
 	}
 
 	// Locking.
@@ -485,7 +481,7 @@ func (o *Object) ReadAt(b []byte, offset int64) (n int, err error) {
 // underlying object is not closed.
 func (o *Object) Seek(offset int64, whence int) (n int64, err error) {
 	if o == nil {
-		return 0, ErrInvalidArgument("Object is nil")
+		return 0, errInvalidArgument("Object is nil")
 	}
 
 	// Locking.
@@ -499,7 +495,7 @@ func (o *Object) Seek(offset int64, whence int) (n int64, err error) {
 
 	// Negative offset is valid for whence of '2'.
 	if offset < 0 && whence != 2 {
-		return 0, ErrInvalidArgument(fmt.Sprintf("Negative position not allowed for %d", whence))
+		return 0, errInvalidArgument(fmt.Sprintf("Negative position not allowed for %d", whence))
 	}
 
 	// This is the first request. So before anything else
@@ -523,7 +519,7 @@ func (o *Object) Seek(offset int64, whence int) (n int64, err error) {
 	// Switch through whence.
 	switch whence {
 	default:
-		return 0, ErrInvalidArgument(fmt.Sprintf("Invalid whence %d", whence))
+		return 0, errInvalidArgument(fmt.Sprintf("Invalid whence %d", whence))
 	case 0:
 		if o.objectInfo.Size > -1 && offset > o.objectInfo.Size {
 			return 0, io.EOF
@@ -537,7 +533,7 @@ func (o *Object) Seek(offset int64, whence int) (n int64, err error) {
 	case 2:
 		// If we don't know the object size return an error for io.SeekEnd
 		if o.objectInfo.Size < 0 {
-			return 0, ErrInvalidArgument("Whence END is not supported when the object size is unknown")
+			return 0, errInvalidArgument("Whence END is not supported when the object size is unknown")
 		}
 		// Seeking to positive offset is valid for whence '2', but
 		// since we are backing a Reader we have reached 'EOF' if
@@ -547,7 +543,7 @@ func (o *Object) Seek(offset int64, whence int) (n int64, err error) {
 		}
 		// Seeking to negative position not allowed for whence.
 		if o.objectInfo.Size+offset < 0 {
-			return 0, ErrInvalidArgument(fmt.Sprintf("Seeking at negative offset not allowed for %d", whence))
+			return 0, errInvalidArgument(fmt.Sprintf("Seeking at negative offset not allowed for %d", whence))
 		}
 		o.currOffset = o.objectInfo.Size + offset
 	}
@@ -568,7 +564,7 @@ func (o *Object) Seek(offset int64, whence int) (n int64, err error) {
 // for subsequent Close() calls.
 func (o *Object) Close() (err error) {
 	if o == nil {
-		return ErrInvalidArgument("Object is nil")
+		return errInvalidArgument("Object is nil")
 	}
 	// Locking.
 	o.mutex.Lock()
@@ -617,10 +613,16 @@ func (c Client) getObject(ctx context.Context, bucketName, objectName string, op
 		return nil, ObjectInfo{}, nil, err
 	}
 
+	urlValues := make(url.Values)
+	if opts.VersionID != "" {
+		urlValues.Set("versionId", opts.VersionID)
+	}
+
 	// Execute GET on objectName.
 	resp, err := c.executeMethod(ctx, "GET", requestMetadata{
 		bucketName:       bucketName,
 		objectName:       objectName,
+		queryValues:      urlValues,
 		customHeader:     opts.Header(),
 		contentSHA256Hex: emptySHA256Hex,
 	})
@@ -636,7 +638,7 @@ func (c Client) getObject(ctx context.Context, bucketName, objectName string, op
 	objectStat, err := ToObjectInfo(bucketName, objectName, resp.Header)
 	if err != nil {
 		closeResponse(resp)
-		return nil, objectStat, resp.Header, nil
+		return nil, ObjectInfo{}, nil, err
 	}
 
 	// do not close body here, caller will close

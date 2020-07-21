@@ -37,9 +37,9 @@ import (
 	"time"
 
 	md5simd "github.com/minio/md5-simd"
-	"github.com/minio/minio-go/v6/pkg/credentials"
-	"github.com/minio/minio-go/v6/pkg/s3utils"
-	"github.com/minio/minio-go/v6/pkg/signer"
+	"github.com/minio/minio-go/v7/pkg/credentials"
+	"github.com/minio/minio-go/v7/pkg/s3utils"
+	"github.com/minio/minio-go/v7/pkg/signer"
 	"golang.org/x/net/publicsuffix"
 )
 
@@ -96,6 +96,7 @@ type Client struct {
 type Options struct {
 	Creds        *credentials.Credentials
 	Secure       bool
+	Transport    http.RoundTripper
 	Region       string
 	BucketLookup BucketLookupType
 
@@ -107,7 +108,7 @@ type Options struct {
 // Global constants.
 const (
 	libraryName    = "minio-go"
-	libraryVersion = "v6.0.57"
+	libraryVersion = "v7.0.1"
 )
 
 // User Agent should always following the below style.
@@ -129,43 +130,12 @@ const (
 	BucketLookupPath
 )
 
-// NewV2 - instantiate minio client with Amazon S3 signature version
-// '2' compatibility.
-func NewV2(endpoint string, accessKeyID, secretAccessKey string, secure bool) (*Client, error) {
-	clnt, err := privateNew(endpoint, Options{
-		Creds:        credentials.NewStaticV2(accessKeyID, secretAccessKey, ""),
-		Secure:       secure,
-		BucketLookup: BucketLookupAuto,
-	})
-	if err != nil {
-		return nil, err
+// New - instantiate minio client with options
+func New(endpoint string, opts *Options) (*Client, error) {
+	if opts == nil {
+		return nil, errors.New("no options provided")
 	}
-	clnt.overrideSignerType = credentials.SignatureV2
-	return clnt, nil
-}
-
-// NewV4 - instantiate minio client with Amazon S3 signature version
-// '4' compatibility.
-func NewV4(endpoint string, accessKeyID, secretAccessKey string, secure bool) (*Client, error) {
-	clnt, err := privateNew(endpoint, Options{
-		Creds:        credentials.NewStaticV4(accessKeyID, secretAccessKey, ""),
-		Secure:       secure,
-		BucketLookup: BucketLookupAuto,
-	})
-	if err != nil {
-		return nil, err
-	}
-	clnt.overrideSignerType = credentials.SignatureV4
-	return clnt, nil
-}
-
-// New - instantiate minio client, adds automatic verification of signature.
-func New(endpoint, accessKeyID, secretAccessKey string, secure bool) (*Client, error) {
-	clnt, err := privateNew(endpoint, Options{
-		Creds:        credentials.NewStaticV4(accessKeyID, secretAccessKey, ""),
-		Secure:       secure,
-		BucketLookup: BucketLookupAuto,
-	})
+	clnt, err := privateNew(endpoint, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -177,40 +147,8 @@ func New(endpoint, accessKeyID, secretAccessKey string, secure bool) (*Client, e
 	if s3utils.IsAmazonEndpoint(*clnt.endpointURL) {
 		clnt.overrideSignerType = credentials.SignatureV4
 	}
+
 	return clnt, nil
-}
-
-// NewWithCredentials - instantiate minio client with credentials provider
-// for retrieving credentials from various credentials provider such as
-// IAM, File, Env etc.
-func NewWithCredentials(endpoint string, creds *credentials.Credentials, secure bool, region string) (*Client, error) {
-	return privateNew(endpoint, Options{
-		Creds:        creds,
-		Secure:       secure,
-		BucketLookup: BucketLookupAuto,
-		Region:       region,
-	})
-}
-
-// NewWithRegion - instantiate minio client, with region configured. Unlike New(),
-// NewWithRegion avoids bucket-location lookup operations and it is slightly faster.
-// Use this function when if your application deals with single region.
-func NewWithRegion(endpoint, accessKeyID, secretAccessKey string, secure bool, region string) (*Client, error) {
-	creds := credentials.NewStaticV4(accessKeyID, secretAccessKey, "")
-	return privateNew(endpoint, Options{
-		Creds:        creds,
-		Secure:       secure,
-		Region:       region,
-		BucketLookup: BucketLookupAuto,
-	})
-}
-
-// NewWithOptions - instantiate minio client with options
-func NewWithOptions(endpoint string, opts *Options) (*Client, error) {
-	if opts == nil {
-		return nil, errors.New("no options provided")
-	}
-	return privateNew(endpoint, *opts)
 }
 
 // EndpointURL returns the URL of the S3 endpoint.
@@ -330,7 +268,7 @@ func (c *Client) redirectHeaders(req *http.Request, via []*http.Request) error {
 	return nil
 }
 
-func privateNew(endpoint string, opts Options) (*Client, error) {
+func privateNew(endpoint string, opts *Options) (*Client, error) {
 	// construct endpoint.
 	endpointURL, err := getEndpointURL(endpoint, opts.Secure)
 	if err != nil {
@@ -356,9 +294,12 @@ func privateNew(endpoint string, opts Options) (*Client, error) {
 	// Save endpoint URL, user agent for future uses.
 	clnt.endpointURL = endpointURL
 
-	transport, err := DefaultTransport(opts.Secure)
-	if err != nil {
-		return nil, err
+	transport := opts.Transport
+	if transport == nil {
+		transport, err = DefaultTransport(opts.Secure)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Instantiate http client and bucket location cache.
@@ -402,27 +343,6 @@ func (c *Client) SetAppInfo(appName string, appVersion string) {
 	if appName != "" && appVersion != "" {
 		c.appInfo.appName = appName
 		c.appInfo.appVersion = appVersion
-	}
-}
-
-// SetCustomTransport - set new custom transport.
-func (c *Client) SetCustomTransport(customHTTPTransport http.RoundTripper) {
-	// Set this to override default transport
-	// ``http.DefaultTransport``.
-	//
-	// This transport is usually needed for debugging OR to add your
-	// own custom TLS certificates on the client transport, for custom
-	// CA's and certs which are not part of standard certificate
-	// authority follow this example :-
-	//
-	//   tr := &http.Transport{
-	//           TLSClientConfig:    &tls.Config{RootCAs: pool},
-	//           DisableCompression: true,
-	//   }
-	//   api.SetCustomTransport(tr)
-	//
-	if c.httpClient != nil {
-		c.httpClient.Transport = customHTTPTransport
 	}
 }
 
@@ -595,7 +515,7 @@ func (c Client) do(req *http.Request) (*http.Response, error) {
 	// Response cannot be non-nil, report error if thats the case.
 	if resp == nil {
 		msg := "Response is empty. " + reportIssue
-		return nil, ErrInvalidArgument(msg)
+		return nil, errInvalidArgument(msg)
 	}
 
 	// If trace is enabled, dump http request and response,
@@ -677,7 +597,7 @@ func (c Client) executeMethod(ctx context.Context, method string, metadata reque
 
 		// Instantiate a new request.
 		var req *http.Request
-		req, err = c.newRequest(method, metadata)
+		req, err = c.newRequest(ctx, method, metadata)
 		if err != nil {
 			errResponse := ToErrorResponse(err)
 			if isS3CodeRetryable(errResponse.Code) {
@@ -784,7 +704,7 @@ func (c Client) executeMethod(ctx context.Context, method string, metadata reque
 }
 
 // newRequest - instantiate a new HTTP request for a given method.
-func (c Client) newRequest(method string, metadata requestMetadata) (req *http.Request, err error) {
+func (c Client) newRequest(ctx context.Context, method string, metadata requestMetadata) (req *http.Request, err error) {
 	// If no method is supplied default to 'POST'.
 	if method == "" {
 		method = "POST"
@@ -794,7 +714,7 @@ func (c Client) newRequest(method string, metadata requestMetadata) (req *http.R
 	if location == "" {
 		if metadata.bucketName != "" {
 			// Gather location only if bucketName is present.
-			location, err = c.getBucketLocation(metadata.bucketName)
+			location, err = c.getBucketLocation(ctx, metadata.bucketName)
 			if err != nil {
 				return nil, err
 			}
@@ -850,7 +770,7 @@ func (c Client) newRequest(method string, metadata requestMetadata) (req *http.R
 	// Generate presign url if needed, return right here.
 	if metadata.expires != 0 && metadata.presignURL {
 		if signerType.IsAnonymous() {
-			return nil, ErrInvalidArgument("Presigned URLs cannot be generated with anonymous credentials.")
+			return nil, errInvalidArgument("Presigned URLs cannot be generated with anonymous credentials.")
 		}
 		if signerType.IsV2() {
 			// Presign URL with signature v2.
@@ -940,7 +860,7 @@ func (c Client) makeTargetURL(bucketName, objectName, bucketLocation string, isV
 			// http://docs.aws.amazon.com/AmazonS3/latest/dev/transfer-acceleration.html
 			// Disable transfer acceleration for non-compliant bucket names.
 			if strings.Contains(bucketName, ".") {
-				return nil, ErrTransferAccelerationBucket(bucketName)
+				return nil, errTransferAccelerationBucket(bucketName)
 			}
 			// If transfer acceleration is requested set new host.
 			// For more details about enabling transfer acceleration read here.

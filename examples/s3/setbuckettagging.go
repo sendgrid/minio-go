@@ -20,10 +20,11 @@
 package main
 
 import (
+	"context"
 	"log"
 
-	minio "github.com/minio/minio-go/v6"
-	"github.com/minio/minio-go/v6/pkg/tags"
+	minio "github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/tags"
 )
 
 func main() {
@@ -40,15 +41,15 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	tags, err := tags.NewTags(map[string]string{
+	t, err := tags.MapToBucketTags(map[string]string{
 		"Tag1": "Value1",
 		"Tag2": "Value2",
-	}, false)
+	})
 	if err != nil {
 		log.Fatalln(err)
 	}
 
-	err = s3Client.SetBucketTagging("my-bucketname", tags)
+	err = s3Client.SetBucketTagging(context.Background(), "my-bucketname", t)
 	if err != nil {
 		log.Fatalln(err)
 	}

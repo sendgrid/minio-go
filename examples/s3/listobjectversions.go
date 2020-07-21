@@ -2,7 +2,7 @@
 
 /*
  * MinIO Go Library for Amazon S3 Compatible Cloud Storage
- * Copyright 2017 MinIO, Inc.
+ * Copyright 2020 MinIO, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,54 +20,40 @@
 package main
 
 import (
-	"io"
-	"log"
-	"os"
-	"time"
-
 	"context"
+	"fmt"
 
-	"github.com/minio/minio-go/v6"
+	"github.com/minio/minio-go/v7"
 )
 
 func main() {
-	// Note: YOUR-ACCESSKEYID, YOUR-SECRETACCESSKEY, my-bucketname, my-objectname and
-	// my-testfile are dummy values, please replace them with original values.
+	// Note: YOUR-ACCESSKEYID, YOUR-SECRETACCESSKEY, my-bucketname and my-prefixname
+	// are dummy values, please replace them with original values.
 
 	// Requests are always secure (HTTPS) by default. Set secure=false to enable insecure (HTTP) access.
 	// This boolean value is the last argument for New().
 
 	// New returns an Amazon S3 compatible client object. API compatibility (v2 or v4) is automatically
 	// determined based on the Endpoint value.
-
-	s3Client, err := minio.New("s3.amazonaws.com", "YOUR-ACCESS-KEY-HERE", "YOUR-SECRET-KEY-HERE", true)
+	s3Client, err := minio.New("s3.amazonaws.com", "YOUR-ACCESSKEYID", "YOUR-SECRETACCESSKEY", true)
 	if err != nil {
-		log.Fatalln(err)
+		fmt.Println(err)
+		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-	defer cancel()
+	// Create a done channel to control 'ListObjects' go routine.
+	doneCh := make(chan struct{})
 
-	opts := minio.GetObjectOptions{}
-	opts.SetModified(time.Now().Round(10 * time.Minute)) // get object if was modified within the last 10 minutes
-	reader, err := s3Client.GetObjectWithContext(ctx, "my-bucketname", "my-objectname", opts)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	defer reader.Close()
+	// Indicate to our routine to exit cleanly upon return.
+	defer close(doneCh)
 
-	localFile, err := os.Create("my-testfile")
-	if err != nil {
-		log.Fatalln(err)
+	// List all objects from a bucket-name with a matching prefix.
+	for objectVersion := range s3Client.ListObjectVersions(context.Background(), "my-bucketname", "my-prefixname", true, doneCh) {
+		if objectVersion.Err != nil {
+			fmt.Println(objectVersion.Err)
+			return
+		}
+		fmt.Println(objectVersion)
 	}
-	defer localFile.Close()
-
-	stat, err := reader.Stat()
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	if _, err := io.CopyN(localFile, reader, stat.Size); err != nil {
-		log.Fatalln(err)
-	}
+	return
 }

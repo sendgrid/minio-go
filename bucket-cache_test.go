@@ -27,8 +27,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/minio/minio-go/v6/pkg/credentials"
-	"github.com/minio/minio-go/v6/pkg/signer"
+	"github.com/minio/minio-go/v7/pkg/credentials"
+	"github.com/minio/minio-go/v7/pkg/signer"
 )
 
 // Test validates `newBucketLocationCache`.
@@ -227,8 +227,10 @@ func TestGetBucketLocationRequest(t *testing.T) {
 		client := &Client{}
 		var err error
 		if testCase.info.endPoint != "" {
-
-			client, err = New(testCase.info.endPoint, testCase.info.accessKey, testCase.info.secretKey, testCase.info.enableInsecure)
+			client, err = New(testCase.info.endPoint, &Options{
+				Creds:  credentials.NewStaticV4(testCase.info.accessKey, testCase.info.secretKey, ""),
+				Secure: testCase.info.enableInsecure,
+			})
 			if err != nil {
 				t.Fatalf("Test %d: Failed to create new Client: %s", i+1, err.Error())
 			}
