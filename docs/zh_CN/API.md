@@ -1,8 +1,8 @@
-# Minio Go Client API文档 [![Slack](https://slack.minio.io/slack?type=svg)](https://slack.minio.io)
+# MinIO Go Client API文档 [![Slack](https://slack.min.io/slack?type=svg)](https://slack.min.io)
 
-## 初使化Minio Client对象。
+## 初使化MinIO Client对象。
 
-##  Minio
+##  MinIO
 
 ```go
 package main
@@ -10,7 +10,7 @@ package main
 import (
     "fmt"
 
-    "github.com/minio/minio-go"
+    "github.com/minio/minio-go/v6"
 )
 
 func main() {
@@ -18,7 +18,7 @@ func main() {
         ssl := true
 
         // 初使化minio client对象。
-        minioClient, err := minio.New("play.minio.io:9000", "Q3AM3UQ867SPQQA43P2F", "zuf+tfteSlswRu7BJ86wekitnifILbZam1KYY3TG", ssl)
+        minioClient, err := minio.New("play.min.io", "Q3AM3UQ867SPQQA43P2F", "zuf+tfteSlswRu7BJ86wekitnifILbZam1KYY3TG", ssl)
         if err != nil {
                 fmt.Println(err)
                 return
@@ -34,7 +34,7 @@ package main
 import (
     "fmt"
 
-    "github.com/minio/minio-go"
+    "github.com/minio/minio-go/v6"
 )
 
 func main() {
@@ -69,7 +69,7 @@ func main() {
 |   | [`FPutObjectWithContext`](#FPutObjectWithContext)  | |   |   |
 |   | [`FGetObjectWithContext`](#FGetObjectWithContext)  | |   |   |
 ## 1. 构造函数
-<a name="Minio"></a>
+<a name="MinIO"></a>
 
 ### New(endpoint, accessKeyID, secretAccessKey string, ssl bool) (*Client, error)
 初使化一个新的client对象。
@@ -109,14 +109,28 @@ __参数__
 |`bucketName`  | _string_  | 存储桶名称 |
 | `location`  |  _string_ | 存储桶被创建的region(地区)，默认是us-east-1(美国东一区)，下面列举的是其它合法的值。注意：如果用的是minio服务的话，resion是在它的配置文件中，（默认是us-east-1）。|
 | | |us-east-1 |
+| | |us-east-2 |
 | | |us-west-1 |
 | | |us-west-2 |
+| | |ca-central-1 |
 | | |eu-west-1 |
+| | |eu-west-2 |
+| | |eu-west-3 |
 | | | eu-central-1|
+| | | eu-north-1|
+| | | ap-east-1|
+| | | ap-south-1|
 | | | ap-southeast-1|
-| | | ap-northeast-1|
 | | | ap-southeast-2|
+| | | ap-northeast-1|
+| | | ap-northeast-2|
+| | | ap-northeast-3|
+| | | me-south-1|
 | | | sa-east-1|
+| | | us-gov-west-1|
+| | | us-gov-east-1|
+| | | cn-north-1|
+| | | cn-northwest-1|
 
 
 __示例__
@@ -379,7 +393,7 @@ __minio.GetObjectOptions__
 
 |参数 | 类型 | 描述 |
 |:---|:---|:---|
-| `opts.Materials` | _encrypt.Materials_ | `encrypt`包提供的对流加密的接口，(更多信息，请看https://godoc.org/github.com/minio/minio-go) |
+| `opts.Materials` | _encrypt.Materials_ | `encrypt`包提供的对流加密的接口，(更多信息，请看https://godoc.org/github.com/minio/minio-go/v6) |
 
 __返回值__
 
@@ -524,7 +538,7 @@ __参数__
 |`bucketName`  | _string_  |存储桶名称 |
 |`objectName` | _string_  |对象的名称  |
 |`filePath` | _string_  |下载后保存的路径|
-|`materials` | _encrypt.Materials_ | `encrypt`包提供的对流加密的接口，(更多信息，请看https://godoc.org/github.com/minio/minio-go) |
+|`materials` | _encrypt.Materials_ | `encrypt`包提供的对流加密的接口，(更多信息，请看https://godoc.org/github.com/minio/minio-go/v6) |
 
 
 __示例__
@@ -550,7 +564,7 @@ if err != nil {
 
 <a name="PutObject"></a>
 ### PutObject(bucketName, objectName string, reader io.Reader, objectSize int64,opts PutObjectOptions) (n int, err error)
-当对象小于64MiB时，直接在一次PUT请求里进行上传。当大于64MiB时，根据文件的实际大小，PutObject会自动地将对象进行拆分成64MiB一块或更大一些进行上传。对象的最大大小是5TB。
+当对象小于128MiB时，直接在一次PUT请求里进行上传。当大于128MiB时，根据文件的实际大小，PutObject会自动地将对象进行拆分成128MiB一块或更大一些进行上传。对象的最大大小是5TB。
 
 __参数__
 
@@ -573,7 +587,7 @@ __minio.PutObjectOptions__
 | `opts.ContentEncoding` | _string_ | 对象的Content encoding，例如"gzip" |
 | `opts.ContentDisposition` | _string_ | 对象的Content disposition, "inline" |
 | `opts.CacheControl` | _string_ | 指定针对请求和响应的缓存机制，例如"max-age=600"|
-| `opts.EncryptMaterials` | _encrypt.Materials_ | `encrypt`包提供的对流加密的接口，(更多信息，请看https://godoc.org/github.com/minio/minio-go) |
+| `opts.EncryptMaterials` | _encrypt.Materials_ | `encrypt`包提供的对流加密的接口，(更多信息，请看https://godoc.org/github.com/minio/minio-go/v6) |
 
 
 __示例__
@@ -889,7 +903,7 @@ if err != nil {
 ### FPutObject(bucketName, objectName, filePath, opts PutObjectOptions) (length int64, err error)
 将filePath对应的文件内容上传到一个对象中。
 
-当对象小于64MiB时，FPutObject直接在一次PUT请求里进行上传。当大于64MiB时，根据文件的实际大小，FPutObject会自动地将对象进行拆分成64MiB一块或更大一些进行上传。对象的最大大小是5TB。
+当对象小于128MiB时，FPutObject直接在一次PUT请求里进行上传。当大于128MiB时，根据文件的实际大小，FPutObject会自动地将对象进行拆分成128MiB一块或更大一些进行上传。对象的最大大小是5TB。
 
 __参数__
 
@@ -1176,7 +1190,7 @@ __参数__
 |:---|:---| :---|
 |`bucketName`  | _string_  | 存储桶名称  |
 |`objectName` | _string_  | 对象的名称  |
-|`encryptMaterials` | _encrypt.Materials_ | `encrypt`包提供的对流加密的接口，(更多信息，请看https://godoc.org/github.com/minio/minio-go) |
+|`encryptMaterials` | _encrypt.Materials_ | `encrypt`包提供的对流加密的接口，(更多信息，请看https://godoc.org/github.com/minio/minio-go/v6) |
 
 
 __返回值__
@@ -1233,7 +1247,7 @@ __参数__
 |`bucketName`  | _string_  |存储桶名称  |
 |`objectName` | _string_  |对象的名称   |
 |`reader` | _io.Reader_  |任何实现io.Reader的Go类型 |
-|`encryptMaterials` | _encrypt.Materials_  | `encrypt`包提供的对流加密的接口，(更多信息，请看https://godoc.org/github.com/minio/minio-go) |
+|`encryptMaterials` | _encrypt.Materials_  | `encrypt`包提供的对流加密的接口，(更多信息，请看https://godoc.org/github.com/minio/minio-go/v6) |
 
 __示例__
 
@@ -1295,7 +1309,7 @@ __参数__
 |`bucketName`  | _string_  |存储桶名称  |
 |`objectName` | _string_  |对象的名称 |
 |`filePath` | _string_  |要上传的文件的路径 |
-|`encryptMaterials` | _encrypt.Materials_  | `encrypt`包提供的对流加密的接口，(更多信息，请看https://godoc.org/github.com/minio/minio-go) |
+|`encryptMaterials` | _encrypt.Materials_  | `encrypt`包提供的对流加密的接口，(更多信息，请看https://godoc.org/github.com/minio/minio-go/v6) |
 
 __示例__
 
@@ -1489,7 +1503,7 @@ fmt.Printf("%s\n", url)
 ### SetBucketPolicy(bucketname, objectPrefix string, policy policy.BucketPolicy) error
 给存储桶或者对象前缀设置访问权限。
 
-必须引入`github.com/minio/minio-go/pkg/policy`包。
+必须引入`github.com/minio/minio-go/v6/pkg/policy`包。
 
 __参数__
 
@@ -1530,7 +1544,7 @@ if err != nil {
 ### GetBucketPolicy(bucketName, objectPrefix string) (policy.BucketPolicy, error)
 获取存储桶或者对象前缀的访问权限。
 
-必须引入`github.com/minio/minio-go/pkg/policy`包。
+必须引入`github.com/minio/minio-go/v6/pkg/policy`包。
 
 __参数__
 
@@ -1779,8 +1793,3 @@ __参数__
 | 参数  | 类型  | 描述  |
 |---|---|---|
 |`acceleratedEndpoint`  | _string_  | 设置新的S3传输加速endpoint。|
-
-
-## 8. 了解更多
-
-- [用Go语言创建属于你的音乐播放器APP示例](https://docs.minio.io/docs/go-music-player-app)

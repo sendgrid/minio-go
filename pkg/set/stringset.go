@@ -1,6 +1,6 @@
 /*
- * Minio Go Library for Amazon S3 Compatible Cloud Storage
- * Copyright 2015-2017 Minio, Inc.
+ * MinIO Go Library for Amazon S3 Compatible Cloud Storage
+ * Copyright 2015-2017 MinIO, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,13 +18,16 @@
 package set
 
 import (
-	"encoding/json"
 	"fmt"
 	"sort"
+
+	jsoniter "github.com/json-iterator/go"
 )
 
 // StringSet - uses map as set of strings.
 type StringSet map[string]struct{}
+
+var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 // ToSlice - returns StringSet as string slice.
 func (set StringSet) ToSlice() []string {

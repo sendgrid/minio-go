@@ -1,6 +1,6 @@
 /*
- * Minio Go Library for Amazon S3 Compatible Cloud Storage
- * Copyright 2017 Minio, Inc.
+ * MinIO Go Library for Amazon S3 Compatible Cloud Storage
+ * Copyright 2017 MinIO, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package s3signer
+package signer
 
 import (
 	"bytes"
@@ -82,7 +82,7 @@ func buildChunkStringToSign(t time.Time, region, previousSig string, chunkData [
 	stringToSignParts := []string{
 		streamingPayloadHdr,
 		t.Format(iso8601DateFormat),
-		getScope(region, t),
+		getScope(region, t, ServiceTypeS3),
 		previousSig,
 		emptySHA256,
 		hex.EncodeToString(sum256(chunkData)),
@@ -118,19 +118,19 @@ func buildChunkSignature(chunkData []byte, reqTime time.Time, region,
 
 	chunkStringToSign := buildChunkStringToSign(reqTime, region,
 		previousSignature, chunkData)
-	signingKey := getSigningKey(secretAccessKey, region, reqTime)
+	signingKey := getSigningKey(secretAccessKey, region, reqTime, ServiceTypeS3)
 	return getSignature(signingKey, chunkStringToSign)
 }
 
 // getSeedSignature - returns the seed signature for a given request.
 func (s *StreamingReader) setSeedSignature(req *http.Request) {
 	// Get canonical request
-	canonicalRequest := getCanonicalRequest(*req, ignoredStreamingHeaders)
+	canonicalRequest := getCanonicalRequest(*req, ignoredStreamingHeaders, getHashedPayload(*req))
 
 	// Get string to sign from canonical request.
-	stringToSign := getStringToSignV4(s.reqTime, s.region, canonicalRequest)
+	stringToSign := getStringToSignV4(s.reqTime, s.region, canonicalRequest, ServiceTypeS3)
 
-	signingKey := getSigningKey(s.secretAccessKey, s.region, s.reqTime)
+	signingKey := getSigningKey(s.secretAccessKey, s.region, s.reqTime, ServiceTypeS3)
 
 	// Calculate signature.
 	s.seedSignature = getSignature(signingKey, stringToSign)
@@ -185,7 +185,7 @@ func (s *StreamingReader) signChunk(chunkLen int) {
 // setStreamingAuthHeader - builds and sets authorization header value
 // for streaming signature.
 func (s *StreamingReader) setStreamingAuthHeader(req *http.Request) {
-	credential := GetCredential(s.accessKeyID, s.region, s.reqTime)
+	credential := GetCredential(s.accessKeyID, s.region, s.reqTime, ServiceTypeS3)
 	authParts := []string{
 		signV4Algorithm + " Credential=" + credential,
 		"SignedHeaders=" + getSignedHeaders(*req, ignoredStreamingHeaders),
@@ -285,7 +285,7 @@ func (s *StreamingReader) Read(buf []byte) (int, error) {
 					// bytes read from baseReader different than
 					// content length provided.
 					if s.bytesRead != s.contentLen {
-						return 0, io.ErrUnexpectedEOF
+						return 0, fmt.Errorf("http: ContentLength=%d with Body length %d", s.contentLen, s.bytesRead)
 					}
 
 					// Sign the chunk and write it to s.buf.

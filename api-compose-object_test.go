@@ -1,6 +1,6 @@
 /*
- * Minio Go Library for Amazon S3 Compatible Cloud Storage
- * Copyright 2017 Minio, Inc.
+ * MinIO Go Library for Amazon S3 Compatible Cloud Storage
+ * Copyright 2017 MinIO, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -130,7 +130,7 @@ func TestGetUserMetaHeadersMap(t *testing.T) {
 		"x-amz-grant-write":   "test@exo.ch",
 	}
 
-	destInfo := &DestinationInfo{"bucket", "object", nil, userMetadata}
+	destInfo, _ := NewDestinationInfo("bucket", "object", nil, userMetadata)
 
 	r := destInfo.getUserMetaHeadersMap(true)
 

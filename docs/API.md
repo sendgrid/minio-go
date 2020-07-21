@@ -1,8 +1,8 @@
-# Minio Go Client API Reference [![Slack](https://slack.minio.io/slack?type=svg)](https://slack.minio.io)
+# MinIO Go Client API Reference [![Slack](https://slack.min.io/slack?type=svg)](https://slack.min.io)
 
-## Initialize Minio Client object.
+## Initialize MinIO Client object.
 
-##  Minio
+##  MinIO
 
 ```go
 package main
@@ -10,7 +10,7 @@ package main
 import (
     "fmt"
 
-    "github.com/minio/minio-go"
+    "github.com/minio/minio-go/v6"
 )
 
 func main() {
@@ -18,7 +18,7 @@ func main() {
         ssl := true
 
         // Initialize minio client object.
-        minioClient, err := minio.New("play.minio.io:9000", "Q3AM3UQ867SPQQA43P2F", "zuf+tfteSlswRu7BJ86wekitnifILbZam1KYY3TG", ssl)
+        minioClient, err := minio.New("play.min.io", "Q3AM3UQ867SPQQA43P2F", "zuf+tfteSlswRu7BJ86wekitnifILbZam1KYY3TG", ssl)
         if err != nil {
                 fmt.Println(err)
                 return
@@ -34,7 +34,7 @@ package main
 import (
     "fmt"
 
-    "github.com/minio/minio-go"
+    "github.com/minio/minio-go/v6"
 )
 
 func main() {
@@ -50,28 +50,42 @@ func main() {
 }
 ```
 
-| Bucket operations                                 | Object operations                                   | Encrypted Object operations                 | Presigned operations                          | Bucket Policy/Notification Operations                         | Client custom settings                                |
-| :---                                              | :---                                                | :---                                        | :---                                          | :---                                                          | :---                                                  |
-| [`MakeBucket`](#MakeBucket)                       | [`GetObject`](#GetObject)              |   [`GetObject`](#GetObject)     | [`PresignedGetObject`](#PresignedGetObject)   | [`SetBucketPolicy`](#SetBucketPolicy)                         | [`SetAppInfo`](#SetAppInfo)                           |
-| [`ListBuckets`](#ListBuckets)                     | [`PutObject`](#PutObject)                           | [`PutObject`](#PutObject)    | [`PresignedPutObject`](#PresignedPutObject)   | [`GetBucketPolicy`](#GetBucketPolicy)                         | [`SetCustomTransport`](#SetCustomTransport)           |
-| [`BucketExists`](#BucketExists)                   | [`CopyObject`](#CopyObject)                         | [`CopyObject`](#CopyObject) | [`PresignedPostPolicy`](#PresignedPostPolicy) | [`SetBucketNotification`](#SetBucketNotification)                  | [`TraceOn`](#TraceOn)                                 |
-| [`RemoveBucket`](#RemoveBucket)                   | [`StatObject`](#StatObject)                         | [`StatObject`](#StatObject) |                                               | [`GetBucketNotification`](#GetBucketNotification)              | [`TraceOff`](#TraceOff)                               |
-| [`ListObjects`](#ListObjects)                     | [`RemoveObject`](#RemoveObject)                     |                |                                               | [`RemoveAllBucketNotification`](#RemoveAllBucketNotification)            | [`SetS3TransferAccelerate`](#SetS3TransferAccelerate) |
-| [`ListObjectsV2`](#ListObjectsV2)                 | [`RemoveObjects`](#RemoveObjects)                   |    |                                               | [`ListenBucketNotification`](#ListenBucketNotification)   |                                                       |
-| [`ListIncompleteUploads`](#ListIncompleteUploads) | [`RemoveIncompleteUpload`](#RemoveIncompleteUpload) |                                             |                                               | [`SetBucketLifecycle`](#SetBucketLifecycle)     |                                                       |
-|                                                   | [`FPutObject`](#FPutObject)                         |    [`FPutObject`](#FPutObject)                                         |                                               | [`GetBucketLifecycle`](#GetBucketLifecycle)                                                              |                                                       |
-|                                                   | [`FGetObject`](#FGetObject)                         |    [`FGetObject`](#FGetObject)                                         |                                               |                                                               |                                                       |
-|                                                   | [`ComposeObject`](#ComposeObject)                   |    [`ComposeObject`](#ComposeObject)                                         |                                               |                                                               |                                                       |
-|                                                   | [`NewSourceInfo`](#NewSourceInfo)                   |    [`NewSourceInfo`](#NewSourceInfo)                                         |                                               |                                                               |                                                       |
-|                                                   | [`NewDestinationInfo`](#NewDestinationInfo)         |    [`NewDestinationInfo`](#NewDestinationInfo)                                         |                                               |                                                               |                                                       |
-|   | [`PutObjectWithContext`](#PutObjectWithContext)  | [`PutObjectWithContext`](#PutObjectWithContext) |   |   |
-|   | [`GetObjectWithContext`](#GetObjectWithContext)  | [`GetObjectWithContext`](#GetObjectWithContext) |   |   |
-|   | [`FPutObjectWithContext`](#FPutObjectWithContext)  | [`FPutObjectWithContext`](#FPutObjectWithContext) |   |   |
-|   | [`FGetObjectWithContext`](#FGetObjectWithContext)  | [`FGetObjectWithContext`](#FGetObjectWithContext) |   |   |
-|   | [`RemoveObjectsWithContext`](#RemoveObjectsWithContext)  | |    |   |
-| | [`SelectObjectContent`](#SelectObjectContent)  |   |
+| Bucket operations                                       | Object operations                                                     | Encrypted Object operations                       | Presigned operations                          | Bucket Policy/Notification Operations                         | Client custom settings                                |
+| :---                                                    | :---                                                                  | :---                                              | :---                                          | :---                                                          | :---                                                  |
+| [`MakeBucket`](#MakeBucket)                             | [`GetObject`](#GetObject)                                             | [`GetObject`](#GetObject)                         | [`PresignedGetObject`](#PresignedGetObject)   | [`SetBucketPolicy`](#SetBucketPolicy)                         | [`SetAppInfo`](#SetAppInfo)                           |
+| [`MakeBucketWithObjectLock`](#MakeBucketWithObjectLock) | [`PutObject`](#PutObject)                                             | [`PutObject`](#PutObject)                         | [`PresignedPutObject`](#PresignedPutObject)   | [`GetBucketPolicy`](#GetBucketPolicy)                         | [`SetCustomTransport`](#SetCustomTransport)           |
+| [`ListBuckets`](#ListBuckets)                           | [`CopyObject`](#CopyObject)                                           | [`CopyObject`](#CopyObject)                       | [`PresignedPostPolicy`](#PresignedPostPolicy) | [`SetBucketNotification`](#SetBucketNotification)             | [`TraceOn`](#TraceOn)                                 |
+| [`BucketExists`](#BucketExists)                         | [`StatObject`](#StatObject)                                           | [`StatObject`](#StatObject)                       |                                               | [`GetBucketNotification`](#GetBucketNotification)             | [`TraceOff`](#TraceOff)                               |
+| [`RemoveBucket`](#RemoveBucket)                         | [`RemoveObject`](#RemoveObject)                                       |                                                   |                                               | [`RemoveAllBucketNotification`](#RemoveAllBucketNotification) | [`SetS3TransferAccelerate`](#SetS3TransferAccelerate) |
+| [`ListObjects`](#ListObjects)                           | [`RemoveObjects`](#RemoveObjects)                                     |                                                   |                                               | [`ListenBucketNotification`](#ListenBucketNotification)       |                                                       |
+| [`ListObjectsV2`](#ListObjectsV2)                       | [`RemoveIncompleteUpload`](#RemoveIncompleteUpload)                   |                                                   |                                               | [`SetBucketLifecycle`](#SetBucketLifecycle)                   |                                                       |
+| [`ListIncompleteUploads`](#ListIncompleteUploads)       | [`FPutObject`](#FPutObject)                                           | [`FPutObject`](#FPutObject)                       |                                               | [`GetBucketLifecycle`](#GetBucketLifecycle)                   |                                                       |
+| [`SetBucketTagging`](#SetBucketTagging)                 | [`FGetObject`](#FGetObject)                                           | [`FGetObject`](#FGetObject)                       |                                               | [`SetObjectLockConfig`](#SetObjectLockConfig)                 |                                                       |
+| [`GetBucketTagging`](#GetBucketTagging)                 | [`ComposeObject`](#ComposeObject)                                     | [`ComposeObject`](#ComposeObject)                 |                                               | [`GetObjectLockConfig`](#GetObjectLockConfig)                 |                                                       |
+| [`DeleteBucketTagging`](#DeleteBucketTagging)           | [`NewSourceInfo`](#NewSourceInfo)                                     | [`NewSourceInfo`](#NewSourceInfo)                 |                                               | [`EnableVersioning`](#EnableVersioning)                       |                                                       |
+|                                                         | [`NewDestinationInfo`](#NewDestinationInfo)                           | [`NewDestinationInfo`](#NewDestinationInfo)       |                                               | [`DisableVersioning`](#DisableVersioning)                     |                                                       |
+|                                                         | [`PutObjectWithContext`](#PutObjectWithContext)                       | [`PutObjectWithContext`](#PutObjectWithContext)   |                                               | [`GetBucketVersioning`](#GetBucketVersioning)                 |                                                       |
+|                                                         | [`GetObjectWithContext`](#GetObjectWithContext)                       | [`GetObjectWithContext`](#GetObjectWithContext)   |                                               | [`SetBucketEncryption`](#SetBucketEncryption)                 |                                                       |
+|                                                         | [`FPutObjectWithContext`](#FPutObjectWithContext)                     | [`FPutObjectWithContext`](#FPutObjectWithContext) |                                               | [`GetBucketEncryption`](#GetBucketEncryption)                 |                                                       |
+|                                                         | [`FGetObjectWithContext`](#FGetObjectWithContext)                     | [`FGetObjectWithContext`](#FGetObjectWithContext) |                                               | [`DeleteBucketEncryption`](#DeleteBucketEncryption)           |                                                       |
+|                                                         | [`RemoveObjectsWithContext`](#RemoveObjectsWithContext)               |                                                   |                                               |                                                               |                                                       |
+|                                                         | [`RemoveObjectsWithOptions`](#RemoveObjectsWithOptions)               |                                                   |                                               |                                                               |                                                       |
+|                                                         | [`RemoveObjectsWithOptionsContext`](#RemoveObjectsWithOptionsContext) |                                                   |                                               |                                                               |                                                       |
+|                                                         | [`RemoveObjectWithOptions`](#RemoveObjectWithOptions)                 |                                                   |                                               |                                                               |                                                       |
+|                                                         | [`PutObjectRetention`](#PutObjectRetention)                           |                                                   |                                               |                                                               |                                                       |
+|                                                         | [`GetObjectRetention`](#GetObjectRetention)                           |                                                   |                                               |                                                               |                                                       |
+|                                                         | [`PutObjectLegalHold`](#PutObjectLegalHold)                           |                                                   |                                               |                                                               |                                                       |
+|                                                         | [`GetObjectLegalHold`](#GetObjectLegalHold)                           |                                                   |                                               |                                                               |                                                       |
+|                                                         | [`SelectObjectContent`](#SelectObjectContent)                         |                                                   |                                               |                                                               |                                                       |
+|                                                         | [`PutObjectTagging`](#PutObjectTagging)                               |                                                   |                                               |                                                               |                                                       |
+|                                                         | [`PutObjectTaggingWithContext`](#PutObjectTaggingWithContext)         |                                                   |                                               |                                                               |                                                       |
+|                                                         | [`GetObjectTagging`](#GetObjectTagging)                               |                                                   |                                               |                                                               |                                                       |
+|                                                         | [`GetObjectTaggingWithContext`](#GetObjectTaggingWithContext)         |                                                   |                                               |                                                               |                                                       |
+|                                                         | [`RemoveObjectTagging`](#RemoveObjectTagging)                         |                                                   |                                               |                                                               |                                                       |
+|                                                         | [`RemoveObjectTaggingWithContext`](#RemoveObjectTaggingWithContext)   |                                                   |                                               |                                                               |                                                       |
+
 ## 1. Constructor
-<a name="Minio"></a>
+<a name="MinIO"></a>
 
 ### New(endpoint, accessKeyID, secretAccessKey string, ssl bool) (*Client, error)
 Initializes a new client object.
@@ -122,6 +136,53 @@ __Parameters__
 |`bucketName`  | _string_  | Name of the bucket |
 | `location`  |  _string_ | Region where the bucket is to be created. Default value is us-east-1. Other valid values are listed below. Note: When used with minio server, use the region specified in its config file (defaults to us-east-1).|
 | | |us-east-1 |
+| | |us-east-2 |
+| | |us-west-1 |
+| | |us-west-2 |
+| | |ca-central-1 |
+| | |eu-west-1 |
+| | |eu-west-2 |
+| | |eu-west-3 |
+| | | eu-central-1|
+| | | eu-north-1|
+| | | ap-east-1|
+| | | ap-south-1|
+| | | ap-southeast-1|
+| | | ap-southeast-2|
+| | | ap-northeast-1|
+| | | ap-northeast-2|
+| | | ap-northeast-3|
+| | | me-south-1|
+| | | sa-east-1|
+| | | us-gov-west-1|
+| | | us-gov-east-1|
+| | | cn-north-1|
+| | | cn-northwest-1|
+
+
+__Example__
+
+
+```go
+err = minioClient.MakeBucket("mybucket", "us-east-1")
+if err != nil {
+    fmt.Println(err)
+    return
+}
+fmt.Println("Successfully created mybucket.")
+```
+
+<a name="MakeBucketWithObjectLock"></a>
+### MakeBucketWithObjectLock(bucketName, location string) error
+Creates a new bucket with object lock enabled.
+
+__Parameters__
+
+| Param  | Type  | Description  |
+|---|---|---|
+|`bucketName`  | _string_  | Name of the bucket |
+| `location`  |  _string_ | Region where the bucket is to be created. Default value is us-east-1. Other valid values are listed below. Note: When used with minio server, use the region specified in its config file (defaults to us-east-1).|
+| | |us-east-1 |
 | | |us-west-1 |
 | | |us-west-2 |
 | | |eu-west-1 |
@@ -136,7 +197,7 @@ __Example__
 
 
 ```go
-err = minioClient.MakeBucket("mybucket", "us-east-1")
+err = minioClient.MakeBucketWithObjectLock("mybucket", "us-east-1")
 if err != nil {
     fmt.Println(err)
     return
@@ -372,6 +433,78 @@ for multiPartObject := range multiPartObjectCh {
 }
 ```
 
+<a name="SetBucketTagging"></a>
+### SetBucketTagging(bucketName string, tags *tags.Tags) error
+Sets tags to a bucket.
+
+
+__Parameters__
+| Param        | Type         | Description        |
+|:-------------|:-------------|:-------------------|
+| `bucketName` | _string_     | Name of the bucket |
+| `tags`       | _*tags.Tags_ | Bucket tags        |
+
+__Example__
+```go
+// Create tags from a map.
+tags, err := tags.NewTags(map[string]string{
+	"Tag1": "Value1",
+	"Tag2": "Value2",
+}, false)
+if err != nil {
+	log.Fatalln(err)
+}
+
+err = minioClient.SetBucketTagging("my-bucketname", tags)
+if err != nil {
+	log.Fatalln(err)
+}
+```
+
+<a name="GetBucketTagging"></a>
+### GetBucketTagging(bucketName string) (*tags.Tags, error)
+Gets tags of a bucket.
+
+
+__Parameters__
+| Param        | Type         | Description        |
+|:-------------|:-------------|:-------------------|
+| `bucketName` | _string_     | Name of the bucket |
+
+__Return Value__
+
+| Param  | Type         | Description |
+|:-------|:-------------|:------------|
+| `tags` | _*tags.Tags_ | Bucket tags |
+
+__Example__
+```go
+tags, err := minioClient.GetBucketTagging("my-bucketname")
+if err != nil {
+	log.Fatalln(err)
+}
+
+fmt.Printf("Fetched Object Tags: %v\n", tags)
+```
+
+<a name="DeleteBucketTagging"></a>
+### DeleteBucketTagging(bucketName string) error
+Deletes all tags of a bucket.
+
+
+__Parameters__
+| Param        | Type         | Description        |
+|:-------------|:-------------|:-------------------|
+| `bucketName` | _string_     | Name of the bucket |
+
+__Example__
+```go
+err := minioClient.DeleteBucketTagging("my-bucketname")
+if err != nil {
+	log.Fatalln(err)
+}
+```
+
 ## 3. Object operations
 
 <a name="GetObject"></a>
@@ -393,7 +526,7 @@ __minio.GetObjectOptions__
 
 |Field | Type | Description |
 |:---|:---|:---|
-| `opts.ServerSideEncryption` | _encrypt.ServerSide_ | Interface provided by `encrypt` package to specify server-side-encryption. (For more information see https://godoc.org/github.com/minio/minio-go) |
+| `opts.ServerSideEncryption` | _encrypt.ServerSide_ | Interface provided by `encrypt` package to specify server-side-encryption. (For more information see https://godoc.org/github.com/minio/minio-go/v6) |
 
 __Return Value__
 
@@ -528,7 +661,7 @@ if err != nil {
 
 <a name="PutObject"></a>
 ### PutObject(bucketName, objectName string, reader io.Reader, objectSize int64,opts PutObjectOptions) (n int, err error)
-Uploads objects that are less than 64MiB in a single PUT operation. For objects that are greater than 64MiB in size, PutObject seamlessly uploads the object as parts of 64MiB or more depending on the actual file size. The max upload size for an object is 5TB.
+Uploads objects that are less than 128MiB in a single PUT operation. For objects that are greater than 128MiB in size, PutObject seamlessly uploads the object as parts of 128MiB or more depending on the actual file size. The max upload size for an object is 5TB.
 
 __Parameters__
 
@@ -543,18 +676,24 @@ __Parameters__
 
 __minio.PutObjectOptions__
 
-|Field | Type | Description |
-|:--- |:--- | :--- |
-| `opts.UserMetadata` | _map[string]string_ | Map of user metadata|
-| `opts.Progress` | _io.Reader_ | Reader to fetch progress of an upload |
-| `opts.ContentType` | _string_ | Content type of object, e.g "application/text" |
-| `opts.ContentEncoding` | _string_ | Content encoding of object, e.g "gzip" |
-| `opts.ContentDisposition` | _string_ | Content disposition of object, "inline" |
-| `opts.ContentLanguage` | _string_ | Content language of object, e.g "French" |
-| `opts.CacheControl` | _string_ | Used to specify directives for caching mechanisms in both requests and responses e.g "max-age=600"|
-| `opts.ServerSideEncryption` | _encrypt.ServerSide_ | Interface provided by `encrypt` package to specify server-side-encryption. (For more information see https://godoc.org/github.com/minio/minio-go) |
-| `opts.StorageClass` | _string_ | Specify storage class for the object. Supported values for Minio server are `REDUCED_REDUNDANCY` and `STANDARD` |
-| `opts.WebsiteRedirectLocation` | _string_ | Specify a redirect for the object, to another object in the same bucket or to a external URL. |
+| Field                          | Type                   | Description                                                                                                                                                                        |
+|:-------------------------------|:-----------------------|:-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `opts.UserMetadata`            | _map[string]string_    | Map of user metadata                                                                                                                                                               |
+| `opts.UserTags`                | _map[string]string_    | Map of user object tags                                                                                                                                                            |
+| `opts.Progress`                | _io.Reader_            | Reader to fetch progress of an upload                                                                                                                                              |
+| `opts.ContentType`             | _string_               | Content type of object, e.g "application/text"                                                                                                                                     |
+| `opts.ContentEncoding`         | _string_               | Content encoding of object, e.g "gzip"                                                                                                                                             |
+| `opts.ContentDisposition`      | _string_               | Content disposition of object, "inline"                                                                                                                                            |
+| `opts.ContentLanguage`         | _string_               | Content language of object, e.g "French"                                                                                                                                           |
+| `opts.CacheControl`            | _string_               | Used to specify directives for caching mechanisms in both requests and responses e.g "max-age=600"                                                                                 |
+| `opts.Mode`                    | _*minio.RetentionMode_ | Retention mode to be set, e.g "COMPLIANCE"                                                                                                                                         |
+| `opts.RetainUntilDate`         | _*time.Time_           | Time until which the retention applied is valid                                                                                                                                    |
+| `opts.ServerSideEncryption`    | _encrypt.ServerSide_   | Interface provided by `encrypt` package to specify server-side-encryption. (For more information see https://godoc.org/github.com/minio/minio-go/v6)                               |
+| `opts.StorageClass`            | _string_               | Specify storage class for the object. Supported values for MinIO server are `REDUCED_REDUNDANCY` and `STANDARD`                                                                    |
+| `opts.WebsiteRedirectLocation` | _string_               | Specify a redirect for the object, to another object in the same bucket or to a external URL.                                                                                      |
+| `opts.SendContentMd5`          | _bool_                 | Specify if you'd like to send `content-md5` header with PutObject operation. Note that setting this flag will cause higher memory usage because of in-memory `md5sum` calculation. |
+| `opts.PartSize`                | _uint64_               | Specify a custom part size used for uploading the object                                                                                                                           |
+
 
 __Example__
 
@@ -771,7 +910,7 @@ __Parameters__
 | :---          | :---             | :---                                                             |
 | `bucket`      | _string_         | Name of the source bucket                                        |
 | `object`      | _string_         | Name of the source object                                        |
-| `sse` | _*encrypt.ServerSide_ | Interface provided by `encrypt` package to specify server-side-encryption. (For more information see https://godoc.org/github.com/minio/minio-go) |
+| `sse` | _*encrypt.ServerSide_ | Interface provided by `encrypt` package to specify server-side-encryption. (For more information see https://godoc.org/github.com/minio/minio-go/v6) |
 
 __Example__
 
@@ -824,7 +963,7 @@ __Parameters__
 | :---          | :---                | :---                                                                                                           |
 | `bucket`      | _string_            | Name of the destination bucket                                                                                 |
 | `object`      | _string_            | Name of the destination object                                                                                 |
-| `sse` | _*encrypt.ServerSide_ | Interface provided by `encrypt` package to specify server-side-encryption. (For more information see https://godoc.org/github.com/minio/minio-go) |                                              |
+| `sse` | _*encrypt.ServerSide_ | Interface provided by `encrypt` package to specify server-side-encryption. (For more information see https://godoc.org/github.com/minio/minio-go/v6) |                                              |
 | `userMeta`    | _map[string]string_ | User metadata to be set on the destination. If nil, with only one source, user-metadata is copied from source. |
 
 __Example__
@@ -865,11 +1004,85 @@ if err != nil {
 }
 ```
 
+<a name="NewDestinationInfoWithOptions"></a>
+### NewDestinationInfoWithOptions(bucket, object string, destOpts DestInfoOptions) (DestinationInfo, error)
+Construct a `DestinationInfo` object that can be used as the destination object for server-side copying operations like `CopyObject` and `ComposeObject`.
+
+__Parameters__
+
+| Param         | Type                | Description                                                                                                    |
+| :---          | :---                | :---                                                                                                           |
+| `bucket`      | _string_            | Name of the destination bucket                                                                                 |
+| `object`      | _string_            | Name of the destination object                                                                                 |
+| `destOpts`    | _minio.DestInfoOptions_   | Pointer to struct that allows user to set optional custom metadata, user tags, and server side encryption parameters. |
+
+__minio.DestInfoOptions__
+
+|Field | Type | Description |
+|:--- |:--- | :--- |
+| `destOpts.Encryption` | _encrypt.ServerSide_ | Interface provided by encrypt package to specify server-side-encryption. (For more information see https://godoc.org/github.com/minio/minio-go/v6). |
+| `destOpts.UserMetadata` | _map[string]string_ | Map of user meta data to be set on destination object. |
+| `destOpts.UserTags` | _map[string]string_ | Map of user object tags to be set on destination object. |
+| `destOpts.ReplaceTags` | _bool_ | Replace object tags of the destination object. |
+| `destOpts.LegalHold` | _minio.LegalHoldStatus_ | LegalHold(En|Dis)abled. |
+| `destOpts.Mode` | _minio.RetentionMode_ | Retention mode to be set on copied object. |
+| `destOpts.RetainUntilDate` | _time.Time_ | Time until object retention should be applied on copied object. |
+
+__Example__
+
+```go
+// No encryption parameter.
+src := minio.NewSourceInfo("bucket", "object", nil)
+tags := map[string]string{
+    "Tag1": "Value1",
+    "Tag2": "Value2",
+}
+dst, err := minio.NewDestinationInfoWithOptions("bucket", "object", minio.DestInfoOptions{
+    UserTags: tags, ReplaceTags: true,
+})
+if err != nil {
+    fmt.Println(err)
+    return
+}
+
+// Copy object call
+err = minioClient.CopyObject(dst, src)
+if err != nil {
+    fmt.Println(err)
+    return
+}
+```
+
+```go
+src := minio.NewSourceInfo("bucket", "object", nil)
+
+// With encryption parameter.
+sseDst := encrypt.DefaultPBKDF([]byte("password"), []byte("salt"))
+tags := map[string]string{
+    "Tag1": "Value1",
+    "Tag2": "Value2",
+}
+dst, err := minio.NewDestinationInfoWithOptions("bucket", "object", minio.DestInfoOptions{
+    Encryption: sseDst, UserTags: tags, ReplaceTags: true,
+})
+if err != nil {
+    fmt.Println(err)
+    return
+}
+
+// Copy object call
+err = minioClient.CopyObject(dst, src)
+if err != nil {
+    fmt.Println(err)
+    return
+}
+```
+
 <a name="FPutObject"></a>
 ### FPutObject(bucketName, objectName, filePath, opts PutObjectOptions) (length int64, err error)
 Uploads contents from a file to objectName.
 
-FPutObject uploads objects that are less than 64MiB in a single PUT operation. For objects that are greater than the 64MiB in size, FPutObject seamlessly uploads the object in chunks of 64MiB or more depending on the actual file size. The max upload size for an object is 5TB.
+FPutObject uploads objects that are less than 128MiB in a single PUT operation. For objects that are greater than the 128MiB in size, FPutObject seamlessly uploads the object in chunks of 128MiB or more depending on the actual file size. The max upload size for an object is 5TB.
 
 __Parameters__
 
@@ -1069,6 +1282,238 @@ for rErr := range minioClient.RemoveObjects(ctx, "my-bucketname", objectsCh) {
     fmt.Println("Error detected during deletion: ", rErr)
 }
 ```
+<a name="RemoveObjectWithOptions"></a>
+### RemoveObjectWithOptions(bucketName, objectName string, opts minio.RemoveObjectOptions) error
+Removes an object.
+
+__Parameters__
+
+
+|Param   |Type   |Description   |
+|:---|:---| :---|
+|`bucketName`  | _string_  |Name of the bucket  |
+|`objectName` | _string_  |Name of the object |
+|`opts`	|_minio.RemoveObjectOptions_ |Allows user to set options |
+
+__minio.RemoveObjectOptions__
+
+|Field | Type | Description |
+|:--- |:--- | :--- |
+| `opts.GovernanceBypass` | _bool_ |Set the bypass governance header to delete an object locked with GOVERNANCE mode|
+| `opts.VersionID` | _string_ |Version ID of the object to delete|
+
+
+```go
+opts := minio.RemoveObjectOptions {
+		GovernanceBypass: true,
+		VersionID: "myversionid",
+		}
+err = minioClient.RemoveObjectWithOptions("mybucket", "myobject", opts)
+if err != nil {
+    fmt.Println(err)
+    return
+}
+```
+<a name="PutObjectRetention"></a>
+### PutObjectRetention(bucketName, objectName string, opts minio.PutObjectRetentionOptions) error
+Applies object retention lock onto an object.
+
+__Parameters__
+
+
+|Param   |Type   |Description   |
+|:---|:---| :---|
+|`bucketName`  | _string_  |Name of the bucket  |
+|`objectName` | _string_  |Name of the object |
+|`opts`	|_minio.PutObjectRetentionOptions_ |Allows user to set options like retention mode, expiry date and version id |
+
+<a name="RemoveObjectsWithOptions"></a>
+### RemoveObjectsWithOptions(bucketName string, objectsCh <-chan string, opts RemoveObjectsOptions) <-chan RemoveObjectError
+*Identical to RemoveObjects operation, but accepts opts for bypassing Governance mode.*
+
+Parameters
+
+|Param   |Type   |Description   |
+|:---|:---| :---|
+|`bucketName`  | _string_  |Name of the bucket  |
+|`objectsCh` |  _chan string_  | Channel of objects to be removed  |
+|`opts` |_minio.RemoveObjectsOptions_ | Allows user to set options |
+
+__minio.RemoveObjectsOptions__
+
+|Field | Type | Description |
+|:--- |:--- | :--- |
+| `opts.GovernanceBypass` | _bool_ |Set the bypass governance header to delete an object locked with GOVERNANCE mode|
+
+__Return Values__
+
+|Param   |Type   |Description   |
+|:---|:---| :---|
+|`errorCh` | _<-chan minio.RemoveObjectError_  | Receive-only channel of errors observed during deletion.  |
+
+```go
+objectsCh := make(chan string)
+
+// Send object names that are needed to be removed to objectsCh
+go func() {
+	defer close(objectsCh)
+	// List all objects from a bucket-name with a matching prefix.
+	for object := range minioClient.ListObjects("my-bucketname", "my-prefixname", true, nil) {
+		if object.Err != nil {
+			log.Fatalln(object.Err)
+		}
+		objectsCh <- object.Key
+	}
+}()
+
+opts := minio.RemoveObjectsOptions{
+	GovernanceBypass: true,
+}
+    
+for rErr := range minioClient.RemoveObjectsWithOptions("my-bucketname", objectsCh, opts) {
+    fmt.Println("Error detected during deletion: ", rErr)
+}
+```
+
+<a name="RemoveObjectsWithOptionsContext"></a>
+### RemoveObjectsWithOptionsContext(ctx context.Context, bucketName string, objectsCh <-chan string, opts RemoveObjectsOptions) <-chan RemoveObjectError
+*Identical to RemoveObjectsWithContext operation, but accepts opts for bypassing Governance mode.*
+
+Parameters
+
+|Param   |Type   |Description   |
+|:---|:---| :---|
+|`ctx`  | _context.Context_  |Request context  |
+|`bucketName`  | _string_  |Name of the bucket  |
+|`objectsCh` |  _chan string_  | Channel of objects to be removed  |
+|`opts` |_minio.RemoveObjectsOptions_ | Allows user to set options |
+
+__Return Values__
+
+|Param   |Type   |Description   |
+|:---|:---| :---|
+|`errorCh` | _<-chan minio.RemoveObjectError_  | Receive-only channel of errors observed during deletion.  |
+
+```go
+objectsCh := make(chan string)
+ctx, cancel := context.WithTimeout(context.Background(), 100 * time.Second)
+defer cancel()
+
+// Send object names that are needed to be removed to objectsCh
+go func() {
+	defer close(objectsCh)
+	// List all objects from a bucket-name with a matching prefix.
+	for object := range minioClient.ListObjects("my-bucketname", "my-prefixname", true, nil) {
+		if object.Err != nil {
+			log.Fatalln(object.Err)
+		}
+		objectsCh <- object.Key
+	}
+}()
+
+opts := minio.RemoveObjectsOptions{
+	GovernanceBypass: true,
+}
+    
+for rErr := range minioClient.RemoveObjectsWithOptionsContext(ctx, "my-bucketname", objectsCh, opts) {
+    fmt.Println("Error detected during deletion: ", rErr)
+}
+```
+
+__minio.PutObjectRetentionOptions__
+
+|Field | Type | Description |
+|:--- |:--- | :--- |
+| `opts.GovernanceBypass` | _bool_ |Set the bypass governance header to overwrite object retention if the existing retention mode is set to GOVERNANCE|
+| `opts.Mode` | _*minio.RetentionMode_ |Retention mode to be set|
+| `opts.RetainUntilDate` | _*time.Time_ |Time until which the retention applied is valid|
+| `opts.VersionID` | _string_ |Version ID of the object to apply retention on|
+
+```go
+t := time.Date(2020, time.November, 18, 14, 0, 0, 0, time.UTC)
+m := minio.RetentionMode(minio.Compliance)
+opts := minio.PutObjectRetentionOptions {
+    GovernanceBypass: true,
+    RetainUntilDate: &t,
+    Mode: &m,
+    }
+err = minioClient.PutObjectRetention("mybucket", "myobject", opts)
+if err != nil {
+    fmt.Println(err)
+    return
+}
+```
+<a name="GetObjectRetention"></a>
+### GetObjectRetention(bucketName, objectName, versionID string) (mode *RetentionMode, retainUntilDate *time.Time, err error)
+Returns retention set on a given object.
+
+__Parameters__
+
+
+|Param   |Type   |Description   |
+|:---|:---| :---|
+|`bucketName`  | _string_  |Name of the bucket  |
+|`objectName` | _string_  |Name of the object |
+|`versionID`	|_string_ |Version ID of the object |
+
+```go
+err = minioClient.PutObjectRetention("mybucket", "myobject", "")
+if err != nil {
+    fmt.Println(err)
+    return
+}
+```
+<a name="PutObjectLegalHold"></a>
+### PutObjectLegalHold(bucketName, objectName string, opts minio.PutObjectLegalHoldOptions) error
+Applies legal-hold onto an object.
+
+__Parameters__
+
+
+|Param   |Type   |Description   |
+|:---|:---| :---|
+|`bucketName`  | _string_  |Name of the bucket  |
+|`objectName` | _string_  |Name of the object |
+|`opts`	|_minio.PutObjectLegalHoldOptions_ |Allows user to set options like status and version id |
+
+_minio.PutObjectLegalHoldOptions_
+
+|Field | Type | Description |
+|:--- |:--- | :--- |
+| `opts.Status` | _*minio.LegalHoldStatus_ |Legal-Hold status to be set|
+| `opts.VersionID` | _string_ |Version ID of the object to apply retention on|
+
+```go
+s := minio.LegalHoldEnabled
+opts := minio.PutObjectLegalHoldOptions {
+    Status: &s,
+}
+err = minioClient.PutObjectLegalHold("mybucket", "myobject", opts)
+if err != nil {
+    fmt.Println(err)
+    return
+}
+```
+<a name="GetObjectLegalHold"></a>
+### GetObjectLegalHold(bucketName, objectName, versionID string) (status *LegalHoldStatus, err error)
+Returns legal-hold status on a given object.
+
+__Parameters__
+
+|Param   |Type   |Description   |
+|:---|:---| :---|
+|`bucketName`  | _string_  |Name of the bucket  |
+|`objectName` | _string_  |Name of the object |
+|`opts`	|_minio.GetObjectLegalHoldOptions_ |Allows user to set options like version id |
+
+```go
+opts := minio.GetObjectLegalHoldOptions{}
+err = minioClient.GetObjectLegalHold("mybucket", "myobject", opts)
+if err != nil {
+    fmt.Println(err)
+    return
+}
+```
 <a name="SelectObjectContent"></a>
 ### SelectObjectContent(ctx context.Context, bucketName string, objectsName string, expression string, options SelectObjectOptions) *SelectResults
 Parameters
@@ -1121,6 +1566,151 @@ __Return Values__
 	if _, err := io.Copy(os.Stdout, reader); err != nil {
 		log.Fatalln(err)
 	}
+```
+
+<a name="PutObjectTagging"></a>
+### PutObjectTagging(bucketName, objectName string, objectTags map[string]string) error
+Adds or replace Object Tags to the given object
+
+__Parameters__
+
+
+|Param   |Type   |Description   |
+|:---|:---| :---|
+|`bucketName`  | _string_  |Name of the bucket   |
+|`objectName` | _string_  |Name of the object   |
+|`objectTags` | _map[string]string_ | Map with Object Tag's Key and Value |
+
+__Example__
+
+
+```go
+err = minioClient.PutObjectTagging(bucketName, objectName, objectTags)
+if err != nil {
+    fmt.Println(err)
+    return
+}
+```
+
+<a name="PutObjectTaggingWithContext"></a>
+### PutObjectTaggingWithContext(ctx context.Context, sssbucketName, objectName string, objectTags map[string]string) error
+Identical to PutObjectTagging, but allows setting context to allow controlling context cancellations and timeouts.
+
+__Parameters__
+
+
+|Param   |Type   |Description   |
+|:---|:---| :---|
+|`ctx`  | _context.Context_  |Request context  |
+|`bucketName`  | _string_  |Name of the bucket   |
+|`objectName` | _string_  |Name of the object   |
+|`objectTags` | _map[string]string_ | Map with Object Tag's Key and Value |
+
+__Example__
+
+
+```go
+err = minioClient.PutObjectTaggingWithContext(ctx, bucketName, objectName, objectTags)
+if err != nil {
+    fmt.Println(err)
+    return
+}
+```
+
+<a name="GetObjectTagging"></a>
+### GetObjectTagging(bucketName, objectName string) (string, error)
+Fetch Object Tags from the given object
+
+__Parameters__
+
+
+|Param   |Type   |Description   |
+|:---|:---| :---|
+|`bucketName`  | _string_  |Name of the bucket   |
+|`objectName` | _string_  |Name of the object   |
+
+__Example__
+
+
+```go
+tags, err = minioClient.GetObjectTagging(bucketName, objectName)
+if err != nil {
+    fmt.Println(err)
+    return
+}
+fmt.Printf("Fetched Tags: %s", tags)
+```
+
+<a name="GetObjectTaggingWithContext"></a>
+### GetObjectTaggingWithContext(ctx context.Context, bucketName, objectName string) (string, error)
+Identical to GetObjectTagging, but allows setting context to allow controlling context cancellations and timeouts.
+
+__Parameters__
+
+
+|Param   |Type   |Description   |
+|:---|:---| :---|
+|`ctx`  | _context.Context_  |Request context  |
+|`bucketName`  | _string_  |Name of the bucket   |
+|`objectName` | _string_  |Name of the object   |
+
+__Example__
+
+
+```go
+tags, err = minioClient.GetObjectTaggingWithContext(ctx, bucketName, objectName)
+if err != nil {
+    fmt.Println(err)
+    return
+}
+fmt.Printf("Fetched Tags: %s", tags)
+```
+
+<a name="RemoveObjectTagging"></a>
+### RemoveObjectTagging(bucketName, objectName string) error
+Remove Object Tags from the given object
+
+__Parameters__
+
+
+|Param   |Type   |Description   |
+|:---|:---| :---|
+|`bucketName`  | _string_  |Name of the bucket   |
+|`objectName` | _string_  |Name of the object   |
+
+__Example__
+
+
+```go
+err = minioClient.RemoveObjectTagging(bucketName, objectName)
+if err != nil {
+    fmt.Println(err)
+    return
+}
+```
+
+<a name="RemoveObjectTaggingWithContext"></a>
+### RemoveObjectTaggingWithContext(ctx context.Context, bucketName, objectName string) error
+Identical to RemoveObjectTagging, but allows setting context to allow controlling context cancellations and timeouts.
+
+__Parameters__
+
+
+|Param   |Type   |Description   |
+|:---|:---| :---|
+|`ctx`  | _context.Context_  |Request context  |
+|`bucketName`  | _string_  |Name of the bucket   |
+|`objectName` | _string_  |Name of the object   |
+
+__Example__
+
+
+```go
+err = minioClient.RemoveObjectTaggingWithContext(ctx, bucketName, objectName)
+if err != nil {
+    fmt.Println(err)
+    return
+}
 ```
 
 <a name="RemoveIncompleteUpload"></a>
@@ -1565,6 +2155,272 @@ if err != nil {
 }
 ```
 
+<a name="SetBucketEncryption"></a>
+### SetBucketEncryption(bucketname string, configuration ServerSideEncryptionConfiguration) error
+Set default encryption configuration on a bucket.
+
+__Parameters__
+
+|Param   |Type   |Description   |
+|:---|:---| :---|
+|`bucketName` | _string_  |Name of the bucket|
+|`configuration` | _minio.ServerSideEncyrptionConfiguration_  | Structure that holds default encryption configuration to be set |
+
+__Return Values__
+
+|Param   |Type   |Description   |
+|:---|:---| :---|
+|`err` | _error_  |Standard Error   |
+
+__Example__
+
+```go
+s3Client, err := minio.New("s3.amazonaws.com", "YOUR-ACCESSKEYID", "YOUR-SECRETACCESSKEY", true)
+if err != nil {
+    log.Fatalln(err)
+}
+
+// Initialize default encryption configuration structure
+config := minio.ServerSideEncryptionConfiguration{Rules: []minio.Rule{
+    minio.Rule{
+        Apply: minio.ApplyServerSideEncryptionByDefault{
+            SSEAlgorithm: "AES256",
+        },
+    },
+}}
+// Set default encryption configuration on an S3 bucket
+err = s3Client.SetBucketEncryption("my-bucketname", config)
+if err != nil {
+    log.Fatalln(err)
+}
+```
+
+<a name="GetBucketEncryption"></a>
+### GetBucketEncryption(bucketName string) (ServerSideEncryptionConfiguration, error)
+Get default encryption configuration set on a bucket.
+
+__Parameters__
+
+
+|Param   |Type   |Description   |
+|:---|:---| :---|
+|`bucketName`  | _string_  |Name of the bucket   |
+
+__Return Values__
+
+
+|Param   |Type   |Description   |
+|:---|:---| :---|
+|`configuration` | _minio.ServerSideEncyrptionConfiguration_ | Structure that holds default encryption configuration |
+|`err` | _error_ |Standard Error  |
+
+__Example__
+
+```go
+s3Client, err := minio.New("s3.amazonaws.com", "YOUR-ACCESSKEYID", "YOUR-SECRETACCESSKEY", true)
+if err != nil {
+    log.Fatalln(err)
+}
+
+// Get default encryption configuration set on an S3 bucket and print it out
+encryptionConfig, err := s3Client.GetBucketEncryption("my-bucketname")
+if err != nil {
+    log.Fatalln(err)
+}
+fmt.Printf("%+v\n", encryptionConfig)
+```
+
+<a name="DeleteBucketEncryption"></a>
+### DeleteBucketEncryption(bucketName string) (error)
+Delete/Remove default encryption configuration set on a bucket.
+
+__Parameters__
+
+
+|Param   |Type   |Description   |
+|:---|:---|:---|
+|`bucketName`  | _string_  |Name of the bucket   |
+
+__Return Values__
+
+
+|Param   |Type   |Description   |
+|:---|:---| :---|
+|`err` | _error_  |Standard Error  |
+
+__Example__
+
+```go
+err := s3Client.DeleteBucketEncryption("my-bucketname")
+if err != nil {
+    log.Fatalln(err)
+}
+// "my-bucket" is successfully deleted/removed.
+```
+
+<a name="SetObjectLockConfig"></a>
+### SetObjectLockConfig(bucketname, mode *RetentionMode, validity *uint, unit *ValidityUnit) error
+Set object lock configuration in given bucket. mode, validity and unit are either all set or all nil.
+
+__Parameters__
+
+|Param   |Type   |Description   |
+|:---|:---| :---|
+|`bucketName` | _string_  |Name of the bucket|
+|`mode` | _RetentionMode_  |Retention mode to be set |
+|`validity` | _uint_  |Validity period to be set |
+|`unit` | _ValidityUnit_  |Unit of validity period |
+
+__Return Values__
+
+|Param   |Type   |Description   |
+|:---|:---| :---|
+|`err` | _error_  |Standard Error   |
+
+__Example__
+
+```go
+mode := Governance
+validity := uint(30)
+unit := Days
+
+err = minioClient.SetObjectLockConfig("my-bucketname", &mode, &validity, &unit)
+if err != nil {
+    fmt.Println(err)
+    return
+}
+```
+
+<a name="GetObjectLockConfig"></a>
+### GetObjectLockConfig(bucketName) (objectLock,*RetentionMode, *uint, *ValidityUnit, error)
+Get object lock configuration of given bucket.
+
+__Parameters__
+
+
+|Param   |Type   |Description   |
+|:---|:---| :---|
+|`bucketName`  | _string_  |Name of the bucket   |
+
+__Return Values__
+
+
+|Param   |Type   |Description   |
+|:---|:---| :---|
+|`objectLock` | _objectLock_  |lock enabled status |
+|`mode` | _RetentionMode_  |Current retention mode |
+|`validity` | _uint_  |Current validity period |
+|`unit` | _ValidityUnit_  |Unit of validity period |
+|`err` | _error_  |Standard Error  |
+
+__Example__
+
+```go
+enabled, mode, validity, unit, err := minioClient.GetObjectLockConfig("my-bucketname")
+if err != nil {
+    log.Fatalln(err)
+}
+fmt.Println("object lock is %s for this bucket",enabled)
+if mode != nil {
+	fmt.Printf("%v mode is enabled for %v %v for bucket 'my-bucketname'\n", *mode, *validity, *unit)
+} else {
+	fmt.Println("No mode is enabled for bucket 'my-bucketname'")
+}
+```
+
+<a name="EnableVersioning"></a>
+### EnableVersioning(bucketName) error
+Enable bucket versioning support.
+
+__Parameters__
+
+
+|Param   |Type   |Description   |
+|:---|:---| :---|
+|`bucketName`  | _string_  |Name of the bucket   |
+
+__Return Values__
+
+
+|Param   |Type   |Description   |
+|:---|:---| :---|
+|`err` | _error_  |Standard Error  |
+
+__Example__
+
+```go
+err := minioClient.EnableVersioning("my-bucketname")
+if err != nil {
+    log.Fatalln(err)
+}
+
+fmt.Println("versioning enabled for bucket 'my-bucketname'")
+```
+
+<a name="DisableVersioning"></a>
+### DisableVersioning(bucketName) error
+Disable bucket versioning support.
+
+__Parameters__
+
+
+|Param   |Type   |Description   |
+|:---|:---| :---|
+|`bucketName`  | _string_  |Name of the bucket   |
+
+__Return Values__
+
+
+|Param   |Type   |Description   |
+|:---|:---| :---|
+|`err` | _error_  |Standard Error  |
+
+__Example__
+
+```go
+err := minioClient.DisableVersioning("my-bucketname")
+if err != nil {
+    log.Fatalln(err)
+}
+
+fmt.Println("versioning disabled for bucket 'my-bucketname'")
+```
+
+<a name="GetBucketVersioning"></a>
+### GetBucketVersioning(bucketName string) (BucketVersioningConfiguration, error)
+Get versioning configuration set on a bucket.
+
+__Parameters__
+
+
+|Param   |Type   |Description   |
+|:---|:---| :---|
+|`bucketName`  | _string_  |Name of the bucket   |
+
+__Return Values__
+
+
+|Param   |Type   |Description   |
+|:---|:---| :---|
+|`configuration` | _minio.BucketVersioningConfiguration_ | Structure that holds versioning configuration |
+|`err` | _error_ |Standard Error  |
+
+__Example__
+
+```go
+s3Client, err := minio.New("s3.amazonaws.com", "YOUR-ACCESSKEYID", "YOUR-SECRETACCESSKEY", true)
+if err != nil {
+    log.Fatalln(err)
+}
+
+// Get versioning configuration set on an S3 bucket and print it out
+versioningConfig, err := s3Client.GetBucketVersioning("my-bucketname")
+if err != nil {
+    log.Fatalln(err)
+}
+fmt.Printf("%+v\n", versioningConfig)
+```
+
 ## 7. Client custom settings
 
 <a name="SetAppInfo"></a>
@@ -1623,8 +2479,3 @@ __Parameters__
 | Param  | Type  | Description  |
 |---|---|---|
 |`acceleratedEndpoint`  | _string_  | Set to new S3 transfer acceleration endpoint.|
-
-
-## 8. Explore Further
-
-- [Build your own Go Music Player App example](https://docs.minio.io/docs/go-music-player-app)

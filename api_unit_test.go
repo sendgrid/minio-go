@@ -1,6 +1,6 @@
 /*
- * Minio Go Library for Amazon S3 Compatible Cloud Storage
- * Copyright 2015-2017 Minio, Inc.
+ * MinIO Go Library for Amazon S3 Compatible Cloud Storage
+ * Copyright 2015-2017 MinIO, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,23 +18,12 @@
 package minio
 
 import (
-	"net/http"
 	"net/url"
 	"testing"
 
-	"github.com/minio/minio-go/pkg/credentials"
-	"github.com/minio/minio-go/pkg/policy"
+	"github.com/minio/minio-go/v6/pkg/credentials"
+	"github.com/minio/minio-go/v6/pkg/policy"
 )
-
-type customReader struct{}
-
-func (c *customReader) Read(p []byte) (n int, err error) {
-	return 0, nil
-}
-
-func (c *customReader) Size() (n int64) {
-	return 10
-}
 
 // Tests valid hosts for location.
 func TestValidBucketLocation(t *testing.T) {
@@ -65,14 +54,8 @@ func TestErrorResponse(t *testing.T) {
 		t.Fatal("Type conversion failed, we have an empty struct.")
 	}
 
-	// Test http response decoding.
-	var httpResponse *http.Response
-	// Set empty variables
-	httpResponse = nil
-	var bucketName, objectName string
-
 	// Should fail with invalid argument.
-	err = httpRespToErrorResponse(httpResponse, bucketName, objectName)
+	err = httpRespToErrorResponse(nil, "", "")
 	errResp = ToErrorResponse(err)
 	if errResp.Code != "InvalidArgument" {
 		t.Fatal("Empty response input should return invalid argument.")
@@ -116,42 +99,70 @@ func TestBucketPolicyTypes(t *testing.T) {
 
 // Tests optimal part size.
 func TestPartSize(t *testing.T) {
-	_, _, _, err := optimalPartInfo(5000000000000000000)
+	_, _, _, err := optimalPartInfo(5000000000000000000, minPartSize)
 	if err == nil {
 		t.Fatal("Error: should fail")
 	}
-	totalPartsCount, partSize, lastPartSize, err := optimalPartInfo(5497558138880)
+	totalPartsCount, partSize, lastPartSize, err := optimalPartInfo(5243928576, 5*1024*1024)
 	if err != nil {
 		t.Fatal("Error: ", err)
 	}
-	if totalPartsCount != 9103 {
-		t.Fatalf("Error: expecting total parts count of 9987: got %v instead", totalPartsCount)
+	if totalPartsCount != 1001 {
+		t.Fatalf("Error: expecting total parts count of 1001: got %v instead", totalPartsCount)
 	}
-	if partSize != 603979776 {
-		t.Fatalf("Error: expecting part size of 550502400: got %v instead", partSize)
+	if partSize != 5242880 {
+		t.Fatalf("Error: expecting part size of 5242880: got %v instead", partSize)
 	}
-	if lastPartSize != 134217728 {
-		t.Fatalf("Error: expecting last part size of 241172480: got %v instead", lastPartSize)
+	if lastPartSize != 1048576 {
+		t.Fatalf("Error: expecting last part size of 1048576: got %v instead", lastPartSize)
 	}
-	_, partSize, _, err = optimalPartInfo(5000000000)
+	totalPartsCount, partSize, lastPartSize, err = optimalPartInfo(5243928576, 0)
+	if err != nil {
+		t.Fatal("Error: ", err)
+	}
+	if totalPartsCount != 40 {
+		t.Fatalf("Error: expecting total parts count of 40: got %v instead", totalPartsCount)
+	}
+	if partSize != 134217728 {
+		t.Fatalf("Error: expecting part size of 134217728: got %v instead", partSize)
+	}
+	if lastPartSize != 9437184 {
+		t.Fatalf("Error: expecting last part size of 9437184: got %v instead", lastPartSize)
+	}
+	_, partSize, _, err = optimalPartInfo(5000000000, minPartSize)
 	if err != nil {
 		t.Fatal("Error:", err)
 	}
 	if partSize != minPartSize {
 		t.Fatalf("Error: expecting part size of %v: got %v instead", minPartSize, partSize)
 	}
-	totalPartsCount, partSize, lastPartSize, err = optimalPartInfo(-1)
+	// if stream and using default optimal part size determined by sdk
+	totalPartsCount, partSize, lastPartSize, err = optimalPartInfo(-1, 0)
 	if err != nil {
 		t.Fatal("Error:", err)
 	}
-	if totalPartsCount != 9103 {
-		t.Fatalf("Error: expecting total parts count of 9987: got %v instead", totalPartsCount)
+	if totalPartsCount != 8192 {
+		t.Fatalf("Error: expecting total parts count of 8192: got %v instead", totalPartsCount)
 	}
-	if partSize != 603979776 {
-		t.Fatalf("Error: expecting part size of 550502400: got %v instead", partSize)
+	if partSize != 671088640 {
+		t.Fatalf("Error: expecting part size of 671088640: got %v instead", partSize)
 	}
-	if lastPartSize != 134217728 {
-		t.Fatalf("Error: expecting last part size of 241172480: got %v instead", lastPartSize)
+	if lastPartSize != 671088640 {
+		t.Fatalf("Error: expecting last part size of 671088640: got %v instead", lastPartSize)
+	}
+
+	totalPartsCount, partSize, lastPartSize, err = optimalPartInfo(-1, 64*1024*1024)
+	if err != nil {
+		t.Fatal("Error:", err)
+	}
+	if totalPartsCount != 10000 {
+		t.Fatalf("Error: expecting total parts count of 10000: got %v instead", totalPartsCount)
+	}
+	if partSize != 67108864 {
+		t.Fatalf("Error: expecting part size of 67108864: got %v instead", partSize)
+	}
+	if lastPartSize != 67108864 {
+		t.Fatalf("Error: expecting part size of 67108864: got %v instead", lastPartSize)
 	}
 }
 
@@ -188,7 +199,7 @@ func TestMakeTargetURL(t *testing.T) {
 	}
 
 	for i, testCase := range testCases {
-		// Initialize a Minio client
+		// Initialize a MinIO client
 		c, _ := New(testCase.addr, "foo", "bar", testCase.secure)
 		isVirtualHost := c.isVirtualHostStyleRequest(*c.endpointURL, testCase.bucketName)
 		u, err := c.makeTargetURL(testCase.bucketName, testCase.objectName, testCase.bucketLocation, isVirtualHost, testCase.queryValues)

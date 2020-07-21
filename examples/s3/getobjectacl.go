@@ -1,8 +1,8 @@
 // +build ignore
 
 /*
- * Minio Go Library for Amazon S3 Compatible Cloud Storage
- * Copyright 2018-2019 Minio, Inc.
+ * MinIO Go Library for Amazon S3 Compatible Cloud Storage
+ * Copyright 2018-2019 MinIO, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@ import (
 	"fmt"
 	"log"
 
-	minio "github.com/minio/minio-go"
+	minio "github.com/minio/minio-go/v6"
 )
 
 func main() {
@@ -43,6 +43,22 @@ func main() {
 	objectInfo, err := s3Client.GetObjectACL("my-bucketname", "my-objectname")
 	if err != nil {
 		log.Fatalln(err)
+	}
+
+	//print object owner informations
+	fmt.Printf(`Object owner:
+Display name: %q
+ID: %q
+`, objectInfo.Owner.DisplayName, objectInfo.Owner.ID)
+
+	//print object grant informations
+	for _, g := range objectInfo.Grant {
+		fmt.Printf(`Object grant:
+ - Display name: %q
+ - ID: %q
+ - URI: %q
+ - Permission: %q
+`, g.Grantee.DisplayName, g.Grantee.ID, g.Grantee.URI, g.Permission)
 	}
 
 	//print all value header (acl, metadata, standard header value...)

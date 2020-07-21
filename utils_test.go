@@ -1,6 +1,6 @@
 /*
- * Minio Go Library for Amazon S3 Compatible Cloud Storage
- * Copyright 2015-2017 Minio, Inc.
+ * MinIO Go Library for Amazon S3 Compatible Cloud Storage
+ * Copyright 2015-2017 MinIO, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,12 +19,11 @@ package minio
 
 import (
 	"fmt"
-	"net/http"
 	"net/url"
 	"testing"
 	"time"
 
-	"github.com/minio/minio-go/pkg/s3utils"
+	"github.com/minio/minio-go/v6/pkg/s3utils"
 )
 
 // Tests signature redacting function used
@@ -49,21 +48,6 @@ func TestRedactSignature(t *testing.T) {
 		if redactedAuthValue != testCase.expectedRedactedAuthValue {
 			t.Errorf("Test %d: Expected %s, got %s", i+1, testCase.expectedRedactedAuthValue, redactedAuthValue)
 		}
-	}
-}
-
-// Tests filter header function by filtering out
-// some custom header keys.
-func TestFilterHeader(t *testing.T) {
-	header := http.Header{}
-	header.Set("Content-Type", "binary/octet-stream")
-	header.Set("Content-Encoding", "gzip")
-	newHeader := filterHeader(header, []string{"Content-Type"})
-	if len(newHeader) > 1 {
-		t.Fatalf("Unexpected size of the returned header, should be 1, got %d", len(newHeader))
-	}
-	if newHeader.Get("Content-Encoding") != "gzip" {
-		t.Fatalf("Unexpected content-encoding value, expected 'gzip', got %s", newHeader.Get("Content-Encoding"))
 	}
 }
 
@@ -273,7 +257,7 @@ func TestIsValidBucketName(t *testing.T) {
 		{".mybucket", ErrInvalidBucketName("Bucket name contains invalid characters"), false},
 		{"mybucket.", ErrInvalidBucketName("Bucket name contains invalid characters"), false},
 		{"mybucket-", ErrInvalidBucketName("Bucket name contains invalid characters"), false},
-		{"my", ErrInvalidBucketName("Bucket name cannot be smaller than 3 characters"), false},
+		{"my", ErrInvalidBucketName("Bucket name cannot be shorter than 3 characters"), false},
 		{"", ErrInvalidBucketName("Bucket name cannot be empty"), false},
 		{"my..bucket", ErrInvalidBucketName("Bucket name contains invalid characters"), false},
 		{"my.bucket.com", nil, true},

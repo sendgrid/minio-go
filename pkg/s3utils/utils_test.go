@@ -1,6 +1,6 @@
 /*
- * Minio Go Library for Amazon S3 Compatible Cloud Storage
- * Copyright 2015-2017 Minio, Inc.
+ * MinIO Go Library for Amazon S3 Compatible Cloud Storage
+ * Copyright 2015-2017 MinIO, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ package s3utils
 import (
 	"errors"
 	"net/url"
+	"reflect"
 	"testing"
 )
 
@@ -73,6 +74,23 @@ func TestGetRegionFromURL(t *testing.T) {
 			u:              url.URL{Host: "s3-external-1.amazonaws.com"},
 			expectedRegion: "",
 		},
+		{
+			u: url.URL{
+				Host: "s3.kubernetesfrontendlb-caf78da2b1f7516c.elb.us-west-2.amazonaws.com",
+			},
+			expectedRegion: "",
+		},
+		{
+			u: url.URL{
+				Host: "s3.kubernetesfrontendlb-caf78da2b1f7516c.elb.amazonaws.com",
+			},
+			expectedRegion: "",
+		},
+		{
+			u: url.URL{
+				Host: "s3.kubernetesfrontendlb-caf78da2b1f7516c.elb.amazonaws.com.cn",
+			},
+		},
 	}
 
 	for i, testCase := range testCases {
@@ -99,6 +117,7 @@ func TestIsValidDomain(t *testing.T) {
 		{"s3.amz.test.com", true},
 		{"s3.%%", false},
 		{"localhost", true},
+		{"localhost.", true}, // http://www.dns-sd.org/trailingdotsindomainnames.html
 		{"-localhost", false},
 		{"", false},
 		{"\n \t", false},
@@ -294,6 +313,81 @@ func TestQueryEncode(t *testing.T) {
 	}
 }
 
+// Tests tag decode to map
+func TestTagDecode(t *testing.T) {
+	testCases := []struct {
+		// canonical input
+		canonicalInput string
+
+		// Expected result.
+		resultMap map[string]string
+	}{
+		{"k=thisisthe%25url", map[string]string{"k": "thisisthe%url"}},
+		{"k=%E6%9C%AC%E8%AA%9E", map[string]string{"k": "本語"}},
+		{"k=%E6%9C%AC%E8%AA%9E.1", map[string]string{"k": "本語.1"}},
+		{"k=%3E123", map[string]string{"k": ">123"}},
+		{"k=myurl%23link", map[string]string{"k": "myurl#link"}},
+		{"k=space%20in%20url", map[string]string{"k": "space in url"}},
+		{"k=url%2Bpath", map[string]string{"k": "url+path"}},
+		{"k=url%2Fpath", map[string]string{"k": "url/path"}},
+	}
+
+	for _, testCase := range testCases {
+		testCase := testCase
+		t.Run("", func(t *testing.T) {
+			gotResult := TagDecode(testCase.canonicalInput)
+			if !reflect.DeepEqual(testCase.resultMap, gotResult) {
+				t.Errorf("Expected %s, got %s", testCase.resultMap, gotResult)
+			}
+		})
+	}
+}
+
+// Tests tag encode function for user tags.
+func TestTagEncode(t *testing.T) {
+	testCases := []struct {
+		// Input.
+		inputMap map[string]string
+		// Expected result.
+		result string
+	}{
+		{map[string]string{
+			"k": "thisisthe%url",
+		}, "k=thisisthe%25url"},
+		{map[string]string{
+			"k": "本語",
+		}, "k=%E6%9C%AC%E8%AA%9E"},
+		{map[string]string{
+			"k": "本語.1",
+		}, "k=%E6%9C%AC%E8%AA%9E.1"},
+		{map[string]string{
+			"k": ">123",
+		}, "k=%3E123"},
+		{map[string]string{
+			"k": "myurl#link",
+		}, "k=myurl%23link"},
+		{map[string]string{
+			"k": "space in url",
+		}, "k=space%20in%20url"},
+		{map[string]string{
+			"k": "url+path",
+		}, "k=url%2Bpath"},
+		{map[string]string{
+			"k": "url/path",
+		}, "k=url%2Fpath"},
+	}
+
+	for _, testCase := range testCases {
+		testCase := testCase
+		t.Run("", func(t *testing.T) {
+			gotResult := TagEncode(testCase.inputMap)
+			if testCase.result != gotResult {
+				t.Errorf("Expected %s, got %s", testCase.result, gotResult)
+			}
+		})
+	}
+}
+
 // Tests validate the URL path encoder.
 func TestEncodePath(t *testing.T) {
 	testCases := []struct {
@@ -309,6 +403,7 @@ func TestEncodePath(t *testing.T) {
 		{"myurl#link", "myurl%23link"},
 		{"space in url", "space%20in%20url"},
 		{"url+path", "url%2Bpath"},
+		{"url/path", "url/path"},
 	}
 
 	for i, testCase := range testCases {
@@ -332,9 +427,11 @@ func TestIsValidBucketName(t *testing.T) {
 		{".mybucket", errors.New("Bucket name contains invalid characters"), false},
 		{"$mybucket", errors.New("Bucket name contains invalid characters"), false},
 		{"mybucket-", errors.New("Bucket name contains invalid characters"), false},
-		{"my", errors.New("Bucket name cannot be smaller than 3 characters"), false},
+		{"my", errors.New("Bucket name cannot be shorter than 3 characters"), false},
 		{"", errors.New("Bucket name cannot be empty"), false},
 		{"my..bucket", errors.New("Bucket name contains invalid characters"), false},
+		{"my.-bucket", errors.New("Bucket name contains invalid characters"), false},
+		{"my-.bucket", errors.New("Bucket name contains invalid characters"), false},
 		{"192.168.1.168", errors.New("Bucket name cannot be an ip address"), false},
 		{":bucketname", errors.New("Bucket name contains invalid characters"), false},
 		{"_bucketName", errors.New("Bucket name contains invalid characters"), false},
@@ -378,9 +475,11 @@ func TestIsValidBucketNameStrict(t *testing.T) {
 		{".mybucket", errors.New("Bucket name contains invalid characters"), false},
 		{"$mybucket", errors.New("Bucket name contains invalid characters"), false},
 		{"mybucket-", errors.New("Bucket name contains invalid characters"), false},
-		{"my", errors.New("Bucket name cannot be smaller than 3 characters"), false},
+		{"my", errors.New("Bucket name cannot be shorter than 3 characters"), false},
 		{"", errors.New("Bucket name cannot be empty"), false},
 		{"my..bucket", errors.New("Bucket name contains invalid characters"), false},
+		{"my.-bucket", errors.New("Bucket name contains invalid characters"), false},
+		{"my-.bucket", errors.New("Bucket name contains invalid characters"), false},
 		{"192.168.1.168", errors.New("Bucket name cannot be an ip address"), false},
 		{"Mybucket", errors.New("Bucket name contains invalid characters"), false},
 		{"my.bucket.com", nil, true},

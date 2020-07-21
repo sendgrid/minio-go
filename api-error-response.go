@@ -1,6 +1,6 @@
 /*
- * Minio Go Library for Amazon S3 Compatible Cloud Storage
- * Copyright 2015-2017 Minio, Inc.
+ * MinIO Go Library for Amazon S3 Compatible Cloud Storage
+ * Copyright 2015-2017 MinIO, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -51,6 +51,9 @@ type ErrorResponse struct {
 	// only in HEAD bucket and ListObjects response.
 	Region string
 
+	// Captures the server string returned in response header.
+	Server string
+
 	// Underlying HTTP status code for the returned error
 	StatusCode int `xml:"-" json:"-"`
 }
@@ -60,7 +63,7 @@ type ErrorResponse struct {
 //
 // For example:
 //
-//   import s3 "github.com/minio/minio-go"
+//   import s3 "github.com/minio/minio-go/v6"
 //   ...
 //   ...
 //   reader, stat, err := s3.GetObject(...)
@@ -105,6 +108,7 @@ func httpRespToErrorResponse(resp *http.Response, bucketName, objectName string)
 
 	errResp := ErrorResponse{
 		StatusCode: resp.StatusCode,
+		Server:     resp.Header.Get("Server"),
 	}
 
 	err := xmlDecoder(resp.Body, &errResp)
