@@ -8,21 +8,28 @@
 package main
 
 import (
-    "fmt"
+	"log"
 
-    "github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 )
 
 func main() {
-        // Use a secure connection.
-        ssl := true
+	endpoint := "play.min.io"
+	accessKeyID := "Q3AM3UQ867SPQQA43P2F"
+	secretAccessKey := "zuf+tfteSlswRu7BJ86wekitnifILbZam1KYY3TG"
+	useSSL := true
 
-        // Initialize minio client object.
-        minioClient, err := minio.New("play.min.io", "Q3AM3UQ867SPQQA43P2F", "zuf+tfteSlswRu7BJ86wekitnifILbZam1KYY3TG", ssl)
-        if err != nil {
-                fmt.Println(err)
-                return
-        }
+	// Initialize minio client object.
+	minioClient, err := minio.New(endpoint, &minio.Options{
+		Creds:  credentials.NewStaticV4(accessKeyID, secretAccessKey, ""),
+		Secure: useSSL,
+	})
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	log.Printf("%#v\n", minioClient) // minioClient is now setup
 }
 ```
 
@@ -35,14 +42,15 @@ import (
     "fmt"
 
     "github.com/minio/minio-go/v7"
+    "github.com/minio/minio-go/v7/credentials"
 )
 
 func main() {
-        // Use a secure connection.
-        ssl := true
-
         // Initialize minio client object.
-        s3Client, err := minio.New("s3.amazonaws.com", "YOUR-ACCESSKEYID", "YOUR-SECRETACCESSKEY", ssl)
+        s3Client, err := minio.New("s3.amazonaws.com", &minio.Options{
+   	        Creds:  credentials.NewStaticV4("YOUR-ACCESSKEYID", "YOUR-SECRETACCESSKEY", ""),
+	        Secure: true,
+        })
         if err != nil {
                 fmt.Println(err)
                 return
@@ -1010,10 +1018,10 @@ __Return Values__
 
 ```go
 	// Initialize minio client object.
-	minioClient, err := minio.New(endpoint, accessKeyID, secretAccessKey, useSSL)
-	if err != nil {
-		log.Fatalln(err)
-	}
+	minioClient, err := minio.New(endpoint, &minio.Options{
+		Creds:  credentials.NewStaticV4(accessKeyID, secretAccessKey, ""),
+		Secure: useSSL,
+	})
 
 	opts := minio.SelectObjectOptions{
 		Expression:     "select count(*) from s3object",
@@ -1497,6 +1505,56 @@ for notificationInfo := range minioClient.ListenBucketNotification(context.Backg
 }
 ```
 
+<a name="ListenNotification"></a>
+### ListenNotification(context context.Context, prefix, suffix string, events []string) <-chan notification.Info
+ListenNotification API receives bucket and object notification events through the notification channel. The returned notification channel has two fields 'Records' and 'Err'.
+
+- 'Records' holds the notifications received from the server.
+- 'Err' indicates any error while processing the received notifications.
+
+NOTE: Notification channel is closed at the first occurrence of an error.
+
+__Parameters__
+
+
+|Param   |Type   |Description   |
+|:---|:---| :---|
+|`bucketName`  | _string_  | Bucket to listen notifications on   |
+|`prefix`  | _string_ | Object key prefix to filter notifications for  |
+|`suffix`  | _string_ | Object key suffix to filter notifications for  |
+|`events`  | _[]string_ | Enables notifications for specific event types |
+
+__Return Values__
+
+|Param   |Type   |Description   |
+|:---|:---| :---|
+|`notificationInfo` | _chan notification.Info_ | Read channel for all notifications |
+
+__minio.NotificationInfo__
+
+|Field   |Type   |Description   |
+|`notificationInfo.Records` | _[]notification.Event_ | Collection of notification events |
+|`notificationInfo.Err` | _error_ | Carries any error occurred during the operation (Standard Error) |
+
+__Example__
+
+
+```go
+// Listen for bucket notifications on "mybucket" filtered by prefix, suffix and events.
+for notificationInfo := range minioClient.ListenNotification(context.Background(), "myprefix/", ".mysuffix", []string{
+    "s3:BucketCreated:*",
+    "s3:BucketRemoved:*",
+    "s3:ObjectCreated:*",
+    "s3:ObjectAccessed:*",
+    "s3:ObjectRemoved:*",
+    }) {
+    if notificationInfo.Err != nil {
+        fmt.Println(notificationInfo.Err)
+    }
+    fmt.Println(notificationInfo)
+}
+```
+
 <a name="SetBucketLifecycle"></a>
 ### SetBucketLifecycle(ctx context.Context, bucketname, config *lifecycle.Configuration) error
 Set lifecycle on bucket or an object prefix.
@@ -1520,10 +1578,12 @@ __Example__
 ```go
 config := lifecycle.NewConfiguration()
 config.Rules = []lifecycle.Rule{
-  ID:     "expire-bucket",
-  Status: "Enabled",
-  Expiration: lifecycle.Expiration{
-     Days: 365,
+  {
+    ID:     "expire-bucket",
+    Status: "Enabled",
+    Expiration: lifecycle.Expiration{
+       Days: 365,
+    },
   },
 }
 
@@ -1584,7 +1644,10 @@ __Return Values__
 __Example__
 
 ```go
-s3Client, err := minio.New("s3.amazonaws.com", "YOUR-ACCESSKEYID", "YOUR-SECRETACCESSKEY", true)
+s3Client, err := minio.New("s3.amazonaws.com", &minio.Options{
+	Creds:  credentials.NewStaticV4("YOUR-ACCESSKEYID", "YOUR-SECRETACCESSKEY", ""),
+	Secure: true,
+})
 if err != nil {
     log.Fatalln(err)
 }
@@ -1619,7 +1682,10 @@ __Return Values__
 __Example__
 
 ```go
-s3Client, err := minio.New("s3.amazonaws.com", "YOUR-ACCESSKEYID", "YOUR-SECRETACCESSKEY", true)
+s3Client, err := minio.New("s3.amazonaws.com", &minio.Options{
+	Creds:  credentials.NewStaticV4("YOUR-ACCESSKEYID", "YOUR-SECRETACCESSKEY", ""),
+	Secure: true,
+})
 if err != nil {
     log.Fatalln(err)
 }
@@ -1816,7 +1882,10 @@ __Return Values__
 __Example__
 
 ```go
-s3Client, err := minio.New("s3.amazonaws.com", "YOUR-ACCESSKEYID", "YOUR-SECRETACCESSKEY", true)
+s3Client, err := minio.New("s3.amazonaws.com", &minio.Options{
+	Creds:  credentials.NewStaticV4("YOUR-ACCESSKEYID", "YOUR-SECRETACCESSKEY", ""),
+	Secure: true,
+})
 if err != nil {
     log.Fatalln(err)
 }
@@ -1832,7 +1901,7 @@ fmt.Printf("%+v\n", versioningConfig)
 <a name="SetBucketReplication"></a>
 
 ### SetBucketReplication(ctx context.Context, bucketname, cfg replication.Config) error
-Set replication configuration on a bucket. To use this API with MinIO server, ReplicationArn should be set in the replication config. Replication ARN can be obtained by first defining the replication target on MinIO using `mc admin bucket replication set` to associate the source and destination buckets for replication with the replication endpoint. Next, issue a `mc admin bucket remote` to fetch the replication ARN associated with this replication endpoint.
+Set replication configuration on a bucket. Role can be obtained by first defining the replication target on MinIO using `mc admin bucket remote set` to associate the source and destination buckets for replication with the replication endpoint.
 
 __Parameters__
 
@@ -1852,7 +1921,7 @@ __Example__
 
 ```go
 replicationStr := `<ReplicationConfiguration>
-   <ReplicationArn></ReplicationArn>
+   <Role></Role>
    <Rule>
       <DeleteMarkerReplication>
          <Status>Disabled</Status>
@@ -1886,8 +1955,7 @@ replicationConfig := replication.Config{}
 if err := xml.Unmarshal([]byte(replicationStr), &replicationConfig); err != nil {
     log.Fatalln(err)
 }
-// this is optional for replication with MinIO server.
-cfg.ReplicationArn := "arn:minio:s3::598361bf-3cec-49a7-b529-ce870a34d759:*"
+cfg.Role := "arn:minio:s3::598361bf-3cec-49a7-b529-ce870a34d759:*"
 err = minioClient.SetBucketReplication(context.Background(), "my-bucketname", replicationConfig)
 if err != nil {
     fmt.Println(err)

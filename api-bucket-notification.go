@@ -59,7 +59,7 @@ func (c Client) SetBucketNotification(ctx context.Context, bucketName string, co
 	}
 
 	// Execute PUT to upload a new bucket notification.
-	resp, err := c.executeMethod(ctx, "PUT", reqMetadata)
+	resp, err := c.executeMethod(ctx, http.MethodPut, reqMetadata)
 	defer closeResponse(resp)
 	if err != nil {
 		return err
@@ -92,7 +92,7 @@ func (c Client) getBucketNotification(ctx context.Context, bucketName string) (n
 	urlValues.Set("notification", "")
 
 	// Execute GET on bucket to list objects.
-	resp, err := c.executeMethod(ctx, "GET", requestMetadata{
+	resp, err := c.executeMethod(ctx, http.MethodGet, requestMetadata{
 		bucketName:       bucketName,
 		queryValues:      urlValues,
 		contentSHA256Hex: emptySHA256Hex,
@@ -120,24 +120,31 @@ func processBucketNotificationResponse(bucketName string, resp *http.Response) (
 	return bucketNotification, nil
 }
 
+// ListenNotification listen for all events, this is a MinIO specific API
+func (c Client) ListenNotification(ctx context.Context, prefix, suffix string, events []string) <-chan notification.Info {
+	return c.ListenBucketNotification(ctx, "", prefix, suffix, events)
+}
+
 // ListenBucketNotification listen for bucket events, this is a MinIO specific API
 func (c Client) ListenBucketNotification(ctx context.Context, bucketName, prefix, suffix string, events []string) <-chan notification.Info {
 	notificationInfoCh := make(chan notification.Info, 1)
-	const notificationCapacity = 1024 * 1024
+	const notificationCapacity = 4 * 1024 * 1024
 	notificationEventBuffer := make([]byte, notificationCapacity)
 	// Only success, start a routine to start reading line by line.
 	go func(notificationInfoCh chan<- notification.Info) {
 		defer close(notificationInfoCh)
 
 		// Validate the bucket name.
-		if err := s3utils.CheckValidBucketName(bucketName); err != nil {
-			select {
-			case notificationInfoCh <- notification.Info{
-				Err: err,
-			}:
-			case <-ctx.Done():
+		if bucketName != "" {
+			if err := s3utils.CheckValidBucketName(bucketName); err != nil {
+				select {
+				case notificationInfoCh <- notification.Info{
+					Err: err,
+				}:
+				case <-ctx.Done():
+				}
+				return
 			}
-			return
 		}
 
 		// Check ARN partition to verify if listening bucket is supported

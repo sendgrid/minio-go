@@ -108,7 +108,7 @@ type Options struct {
 // Global constants.
 const (
 	libraryName    = "minio-go"
-	libraryVersion = "v7.0.1"
+	libraryVersion = "v7.0.4"
 )
 
 // User Agent should always following the below style.
@@ -541,7 +541,7 @@ var successStatus = []int{
 // request upon any error up to maxRetries attempts in a binomially
 // delayed manner using a standard back off algorithm.
 func (c Client) executeMethod(ctx context.Context, method string, metadata requestMetadata) (res *http.Response, err error) {
-	var isRetryable bool     // Indicates if request can be retried.
+	var retryable bool       // Indicates if request can be retried.
 	var bodySeeker io.Seeker // Extracted seeker from io.Reader.
 	var reqRetry = MaxRetry  // Indicates how many times we can retry the request
 
@@ -554,13 +554,13 @@ func (c Client) executeMethod(ctx context.Context, method string, metadata reque
 
 	if metadata.contentBody != nil {
 		// Check if body is seekable then it is retryable.
-		bodySeeker, isRetryable = metadata.contentBody.(io.Seeker)
+		bodySeeker, retryable = metadata.contentBody.(io.Seeker)
 		switch bodySeeker {
 		case os.Stdin, os.Stdout, os.Stderr:
-			isRetryable = false
+			retryable = false
 		}
 		// Retry only when reader is seekable
-		if !isRetryable {
+		if !retryable {
 			reqRetry = 1
 		}
 
@@ -587,7 +587,7 @@ func (c Client) executeMethod(ctx context.Context, method string, metadata reque
 		// error until maxRetries have been exhausted, retry attempts are
 		// performed after waiting for a given period of time in a
 		// binomial fashion.
-		if isRetryable {
+		if retryable {
 			// Seek back to beginning for each attempt.
 			if _, err = bodySeeker.Seek(0, 0); err != nil {
 				// If seek failed, no need to retry.
@@ -707,7 +707,7 @@ func (c Client) executeMethod(ctx context.Context, method string, metadata reque
 func (c Client) newRequest(ctx context.Context, method string, metadata requestMetadata) (req *http.Request, err error) {
 	// If no method is supplied default to 'POST'.
 	if method == "" {
-		method = "POST"
+		method = http.MethodPost
 	}
 
 	location := metadata.bucketLocation
@@ -727,7 +727,7 @@ func (c Client) newRequest(ctx context.Context, method string, metadata requestM
 	// Look if target url supports virtual host.
 	// We explicitly disallow MakeBucket calls to not use virtual DNS style,
 	// since the resolution may fail.
-	isMakeBucket := (metadata.objectName == "" && method == "PUT" && len(metadata.queryValues) == 0)
+	isMakeBucket := (metadata.objectName == "" && method == http.MethodPut && len(metadata.queryValues) == 0)
 	isVirtualHost := c.isVirtualHostStyleRequest(*c.endpointURL, metadata.bucketName) && !isMakeBucket
 
 	// Construct a new target URL.
@@ -821,7 +821,7 @@ func (c Client) newRequest(ctx context.Context, method string, metadata requestM
 	case signerType.IsV2():
 		// Add signature version '2' authorization header.
 		req = signer.SignV2(*req, accessKeyID, secretAccessKey, isVirtualHost)
-	case metadata.objectName != "" && metadata.queryValues == nil && method == "PUT" && metadata.customHeader.Get("X-Amz-Copy-Source") == "" && !c.secure:
+	case metadata.objectName != "" && metadata.queryValues == nil && method == http.MethodPut && metadata.customHeader.Get("X-Amz-Copy-Source") == "" && !c.secure:
 		// Streaming signature is used by default for a PUT object request. Additionally we also
 		// look if the initialized client is secure, if yes then we don't need to perform
 		// streaming signature.

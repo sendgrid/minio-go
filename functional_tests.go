@@ -61,7 +61,6 @@ const (
 	accessKey      = "ACCESS_KEY"
 	secretKey      = "SECRET_KEY"
 	enableHTTPS    = "ENABLE_HTTPS"
-	enableKMS      = "ENABLE_KMS"
 )
 
 type mintJSONFormatter struct {
@@ -85,6 +84,41 @@ func (f *mintJSONFormatter) Format(entry *log.Entry) ([]byte, error) {
 		return nil, fmt.Errorf("Failed to marshal fields to JSON, %v", err)
 	}
 	return append(serialized, '\n'), nil
+}
+
+var readFull = func(r io.Reader, buf []byte) (n int, err error) {
+	// ReadFull reads exactly len(buf) bytes from r into buf.
+	// It returns the number of bytes copied and an error if
+	// fewer bytes were read. The error is EOF only if no bytes
+	// were read. If an EOF happens after reading some but not
+	// all the bytes, ReadFull returns ErrUnexpectedEOF.
+	// On return, n == len(buf) if and only if err == nil.
+	// If r returns an error having read at least len(buf) bytes,
+	// the error is dropped.
+	for n < len(buf) && err == nil {
+		var nn int
+		nn, err = r.Read(buf[n:])
+		// Some spurious io.Reader's return
+		// io.ErrUnexpectedEOF when nn == 0
+		// this behavior is undocumented
+		// so we are on purpose not using io.ReadFull
+		// implementation because this can lead
+		// to custom handling, to avoid that
+		// we simply modify the original io.ReadFull
+		// implementation to avoid this issue.
+		// io.ErrUnexpectedEOF with nn == 0 really
+		// means that io.EOF
+		if err == io.ErrUnexpectedEOF && nn == 0 {
+			err = io.EOF
+		}
+		n += nn
+	}
+	if n >= len(buf) {
+		err = nil
+	} else if n > 0 && err == io.EOF {
+		err = io.ErrUnexpectedEOF
+	}
+	return
 }
 
 func cleanEmptyEntries(fields log.Fields) log.Fields {
@@ -310,7 +344,11 @@ func isFullMode() bool {
 }
 
 func getFuncName() string {
-	pc, _, _, _ := runtime.Caller(1)
+	return getFuncNameLoc(2)
+}
+
+func getFuncNameLoc(caller int) string {
+	pc, _, _, _ := runtime.Caller(caller)
 	return strings.TrimPrefix(runtime.FuncForPC(pc).Name(), "main.")
 }
 
@@ -832,6 +870,10 @@ func testStatObjectWithVersioning() {
 		statInfo, err := c.StatObject(context.Background(), bucketName, objectName, opts)
 		if err != nil {
 			logError(testName, function, args, startTime, "", "error during HEAD object", err)
+			return
+		}
+		if statInfo.VersionID == "" || statInfo.VersionID != results[i].VersionID {
+			logError(testName, function, args, startTime, "", "error during HEAD object, unexpected version id", err)
 			return
 		}
 		if statInfo.ETag != results[i].ETag {
@@ -1960,9 +2002,9 @@ func testGetObjectSeekEnd() {
 		return
 	}
 	buf2 := make([]byte, 100)
-	m, err := io.ReadFull(r, buf2)
+	m, err := readFull(r, buf2)
 	if err != nil {
-		logError(testName, function, args, startTime, "", "Error reading through io.ReadFull", err)
+		logError(testName, function, args, startTime, "", "Error reading through readFull", err)
 		return
 	}
 	if m != len(buf2) {
@@ -7055,7 +7097,7 @@ func testEncryptedEmptyObject() {
 func testEncryptedCopyObjectWrapper(c *minio.Client, bucketName string, sseSrc, sseDst encrypt.ServerSide) {
 	// initialize logging params
 	startTime := time.Now()
-	testName := getFuncName()
+	testName := getFuncNameLoc(2)
 	function := "CopyObject(destination, source)"
 	args := map[string]interface{}{}
 	var srcEncryption, dstEncryption encrypt.ServerSide
@@ -7233,10 +7275,9 @@ func testUnencryptedToSSECCopyObject() {
 	// Generate a new random bucket name.
 	bucketName := randString(60, rand.NewSource(time.Now().UnixNano()), "minio-go-test-")
 
-	var sseSrc encrypt.ServerSide
 	sseDst := encrypt.DefaultPBKDF([]byte("correct horse battery staple"), []byte(bucketName+"dstObject"))
 	// c.TraceOn(os.Stderr)
-	testEncryptedCopyObjectWrapper(c, bucketName, sseSrc, sseDst)
+	testEncryptedCopyObjectWrapper(c, bucketName, nil, sseDst)
 }
 
 // Test encrypted copy object
@@ -7678,7 +7719,7 @@ func testSSECMultipartEncryptedToSSECCopyObjectPart() {
 		logError(testName, function, args, startTime, "", "GetObject call failed", err)
 	}
 	getBuf := make([]byte, 6*1024*1024)
-	_, err = io.ReadFull(r, getBuf)
+	_, err = readFull(r, getBuf)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "Read buffer failed", err)
 	}
@@ -7692,7 +7733,7 @@ func testSSECMultipartEncryptedToSSECCopyObjectPart() {
 		logError(testName, function, args, startTime, "", "GetObject call failed", err)
 	}
 	getBuf = make([]byte, 6*1024*1024+1)
-	_, err = io.ReadFull(r, getBuf)
+	_, err = readFull(r, getBuf)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "Read buffer failed", err)
 	}
@@ -7837,7 +7878,7 @@ func testSSECEncryptedToSSECCopyObjectPart() {
 		logError(testName, function, args, startTime, "", "GetObject call failed", err)
 	}
 	getBuf := make([]byte, 5*1024*1024)
-	_, err = io.ReadFull(r, getBuf)
+	_, err = readFull(r, getBuf)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "Read buffer failed", err)
 	}
@@ -7851,7 +7892,7 @@ func testSSECEncryptedToSSECCopyObjectPart() {
 		logError(testName, function, args, startTime, "", "GetObject call failed", err)
 	}
 	getBuf = make([]byte, 5*1024*1024+1)
-	_, err = io.ReadFull(r, getBuf)
+	_, err = readFull(r, getBuf)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "Read buffer failed", err)
 	}
@@ -7995,7 +8036,7 @@ func testSSECEncryptedToUnencryptedCopyPart() {
 		logError(testName, function, args, startTime, "", "GetObject call failed", err)
 	}
 	getBuf := make([]byte, 5*1024*1024)
-	_, err = io.ReadFull(r, getBuf)
+	_, err = readFull(r, getBuf)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "Read buffer failed", err)
 	}
@@ -8009,7 +8050,7 @@ func testSSECEncryptedToUnencryptedCopyPart() {
 		logError(testName, function, args, startTime, "", "GetObject call failed", err)
 	}
 	getBuf = make([]byte, 5*1024*1024+1)
-	_, err = io.ReadFull(r, getBuf)
+	_, err = readFull(r, getBuf)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "Read buffer failed", err)
 	}
@@ -8156,7 +8197,7 @@ func testSSECEncryptedToSSES3CopyObjectPart() {
 		logError(testName, function, args, startTime, "", "GetObject call failed", err)
 	}
 	getBuf := make([]byte, 5*1024*1024)
-	_, err = io.ReadFull(r, getBuf)
+	_, err = readFull(r, getBuf)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "Read buffer failed", err)
 	}
@@ -8170,7 +8211,7 @@ func testSSECEncryptedToSSES3CopyObjectPart() {
 		logError(testName, function, args, startTime, "", "GetObject call failed", err)
 	}
 	getBuf = make([]byte, 5*1024*1024+1)
-	_, err = io.ReadFull(r, getBuf)
+	_, err = readFull(r, getBuf)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "Read buffer failed", err)
 	}
@@ -8312,7 +8353,7 @@ func testUnencryptedToSSECCopyObjectPart() {
 		logError(testName, function, args, startTime, "", "GetObject call failed", err)
 	}
 	getBuf := make([]byte, 5*1024*1024)
-	_, err = io.ReadFull(r, getBuf)
+	_, err = readFull(r, getBuf)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "Read buffer failed", err)
 	}
@@ -8326,7 +8367,7 @@ func testUnencryptedToSSECCopyObjectPart() {
 		logError(testName, function, args, startTime, "", "GetObject call failed", err)
 	}
 	getBuf = make([]byte, 5*1024*1024+1)
-	_, err = io.ReadFull(r, getBuf)
+	_, err = readFull(r, getBuf)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "Read buffer failed", err)
 	}
@@ -8464,7 +8505,7 @@ func testUnencryptedToUnencryptedCopyPart() {
 		logError(testName, function, args, startTime, "", "GetObject call failed", err)
 	}
 	getBuf := make([]byte, 5*1024*1024)
-	_, err = io.ReadFull(r, getBuf)
+	_, err = readFull(r, getBuf)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "Read buffer failed", err)
 	}
@@ -8478,7 +8519,7 @@ func testUnencryptedToUnencryptedCopyPart() {
 		logError(testName, function, args, startTime, "", "GetObject call failed", err)
 	}
 	getBuf = make([]byte, 5*1024*1024+1)
-	_, err = io.ReadFull(r, getBuf)
+	_, err = readFull(r, getBuf)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "Read buffer failed", err)
 	}
@@ -8618,7 +8659,7 @@ func testUnencryptedToSSES3CopyObjectPart() {
 		logError(testName, function, args, startTime, "", "GetObject call failed", err)
 	}
 	getBuf := make([]byte, 5*1024*1024)
-	_, err = io.ReadFull(r, getBuf)
+	_, err = readFull(r, getBuf)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "Read buffer failed", err)
 	}
@@ -8632,7 +8673,7 @@ func testUnencryptedToSSES3CopyObjectPart() {
 		logError(testName, function, args, startTime, "", "GetObject call failed", err)
 	}
 	getBuf = make([]byte, 5*1024*1024+1)
-	_, err = io.ReadFull(r, getBuf)
+	_, err = readFull(r, getBuf)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "Read buffer failed", err)
 	}
@@ -8775,7 +8816,7 @@ func testSSES3EncryptedToSSECCopyObjectPart() {
 		logError(testName, function, args, startTime, "", "GetObject call failed", err)
 	}
 	getBuf := make([]byte, 5*1024*1024)
-	_, err = io.ReadFull(r, getBuf)
+	_, err = readFull(r, getBuf)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "Read buffer failed", err)
 	}
@@ -8789,7 +8830,7 @@ func testSSES3EncryptedToSSECCopyObjectPart() {
 		logError(testName, function, args, startTime, "", "GetObject call failed", err)
 	}
 	getBuf = make([]byte, 5*1024*1024+1)
-	_, err = io.ReadFull(r, getBuf)
+	_, err = readFull(r, getBuf)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "Read buffer failed", err)
 	}
@@ -8928,7 +8969,7 @@ func testSSES3EncryptedToUnencryptedCopyPart() {
 		logError(testName, function, args, startTime, "", "GetObject call failed", err)
 	}
 	getBuf := make([]byte, 5*1024*1024)
-	_, err = io.ReadFull(r, getBuf)
+	_, err = readFull(r, getBuf)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "Read buffer failed", err)
 	}
@@ -8942,7 +8983,7 @@ func testSSES3EncryptedToUnencryptedCopyPart() {
 		logError(testName, function, args, startTime, "", "GetObject call failed", err)
 	}
 	getBuf = make([]byte, 5*1024*1024+1)
-	_, err = io.ReadFull(r, getBuf)
+	_, err = readFull(r, getBuf)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "Read buffer failed", err)
 	}
@@ -9084,7 +9125,7 @@ func testSSES3EncryptedToSSES3CopyObjectPart() {
 		logError(testName, function, args, startTime, "", "GetObject call failed", err)
 	}
 	getBuf := make([]byte, 5*1024*1024)
-	_, err = io.ReadFull(r, getBuf)
+	_, err = readFull(r, getBuf)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "Read buffer failed", err)
 	}
@@ -9098,7 +9139,7 @@ func testSSES3EncryptedToSSES3CopyObjectPart() {
 		logError(testName, function, args, startTime, "", "GetObject call failed", err)
 	}
 	getBuf = make([]byte, 5*1024*1024+1)
-	_, err = io.ReadFull(r, getBuf)
+	_, err = readFull(r, getBuf)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "Read buffer failed", err)
 	}
@@ -11188,7 +11229,6 @@ func main() {
 	log.SetLevel(log.InfoLevel)
 
 	tls := mustParseBool(os.Getenv(enableHTTPS))
-	kmsEnabled := mustParseBool(os.Getenv(enableKMS))
 	// execute tests
 	if isFullMode() {
 		testMakeBucketErrorV2()
@@ -11269,23 +11309,23 @@ func main() {
 			testSSECEncryptedToUnencryptedCopyPart()
 			testUnencryptedToSSECCopyObjectPart()
 			testUnencryptedToUnencryptedCopyPart()
-			if kmsEnabled {
-				testSSES3EncryptionPutGet()
-				testSSES3EncryptionFPut()
-				testSSES3EncryptedGetObjectReadAtFunctional()
-				testSSES3EncryptedGetObjectReadSeekFunctional()
-				testEncryptedSSECToSSES3CopyObject()
-				testEncryptedSSES3ToSSECCopyObject()
-				testEncryptedSSES3ToSSES3CopyObject()
-				testEncryptedSSES3ToUnencryptedCopyObject()
-				testUnencryptedToSSES3CopyObject()
-				testSSECEncryptedToSSES3CopyObjectPart()
-				testUnencryptedToSSES3CopyObjectPart()
-				testSSES3EncryptedToSSECCopyObjectPart()
-				testSSES3EncryptedToUnencryptedCopyPart()
-				testSSES3EncryptedToSSES3CopyObjectPart()
-			}
+			testEncryptedSSECToSSES3CopyObject()
+			testEncryptedSSES3ToSSECCopyObject()
+			testSSECEncryptedToSSES3CopyObjectPart()
+			testSSES3EncryptedToSSECCopyObjectPart()
 		}
+
+		// KMS tests
+		testSSES3EncryptionPutGet()
+		testSSES3EncryptionFPut()
+		testSSES3EncryptedGetObjectReadAtFunctional()
+		testSSES3EncryptedGetObjectReadSeekFunctional()
+		testEncryptedSSES3ToSSES3CopyObject()
+		testEncryptedSSES3ToUnencryptedCopyObject()
+		testUnencryptedToSSES3CopyObject()
+		testUnencryptedToSSES3CopyObjectPart()
+		testSSES3EncryptedToUnencryptedCopyPart()
+		testSSES3EncryptedToSSES3CopyObjectPart()
 	} else {
 		testFunctional()
 		testFunctionalV2()

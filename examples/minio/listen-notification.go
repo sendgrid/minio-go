@@ -2,7 +2,7 @@
 
 /*
  * MinIO Go Library for Amazon S3 Compatible Cloud Storage
- * Copyright 2020 MinIO, Inc.
+ * Copyright 2015-2017 MinIO, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,7 +21,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 
 	"github.com/minio/minio-go/v7"
@@ -29,26 +28,35 @@ import (
 )
 
 func main() {
-	// Note: YOUR-ACCESSKEYID, YOUR-SECRETACCESSKEY, my-bucketname, my-objectname and
-	// my-testfile are dummy values, please replace them with original values.
+	// Note: YOUR-ACCESSKEYID, YOUR-SECRETACCESSKEY and my-bucketname are
+	// dummy values, please replace them with original values.
 
 	// Requests are always secure (HTTPS) by default. Set secure=false to enable insecure (HTTP) access.
 	// This boolean value is the last argument for New().
 
 	// New returns an Amazon S3 compatible client object. API compatibility (v2 or v4) is automatically
 	// determined based on the Endpoint value.
-	s3Client, err := minio.New("s3.amazonaws.com", &minio.Options{
+	minioClient, err := minio.New("play.min.io", &minio.Options{
 		Creds:  credentials.NewStaticV4("YOUR-ACCESSKEYID", "YOUR-SECRETACCESSKEY", ""),
 		Secure: true,
 	})
 	if err != nil {
 		log.Fatalln(err)
 	}
-	opts := minio.GetObjectLegalHoldOptions{}
-	lh, err := s3Client.GetObjectLegalHold(context.Background(), "my-bucket", "my-object", opts)
-	if err != nil {
-		log.Fatalln(err)
+
+	// s3Client.TraceOn(os.Stderr)
+
+	// Listen for bucket notifications on "mybucket" filtered by prefix, suffix and events.
+	for notificationInfo := range minioClient.ListenNotification(context.Background(), "PREFIX", "SUFFIX", []string{
+		"s3:BucketCreated:*",
+		"s3:BucketRemoved:*",
+		"s3:ObjectCreated:*",
+		"s3:ObjectAccessed:*",
+		"s3:ObjectRemoved:*",
+	}) {
+		if notificationInfo.Err != nil {
+			log.Fatalln(notificationInfo.Err)
+		}
+		log.Println(notificationInfo)
 	}
-	fmt.Printf("Legal Hold on object is %s", lh)
-	log.Println("Get object legal-hold on my-object successfully.")
 }
