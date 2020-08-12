@@ -1,6 +1,6 @@
 /*
- * Minio Go Library for Amazon S3 Compatible Cloud Storage
- * Copyright 2019 Minio, Inc.
+ * MinIO Go Library for Amazon S3 Compatible Cloud Storage
+ * Copyright 2019 MinIO, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
 )
 
@@ -36,7 +37,7 @@ type AssumeRoleWithWebIdentityResponse struct {
 }
 
 // WebIdentityResult - Contains the response to a successful AssumeRoleWithWebIdentity
-// request, including temporary credentials that can be used to make Minio API requests.
+// request, including temporary credentials that can be used to make MinIO API requests.
 type WebIdentityResult struct {
 	AssumedRoleUser AssumedRoleUser `xml:",omitempty"`
 	Audience        string          `xml:",omitempty"`
@@ -57,15 +58,15 @@ type WebIdentityToken struct {
 	Expiry int
 }
 
-// A STSWebIdentity retrieves credentials from Minio service, and keeps track if
+// A STSWebIdentity retrieves credentials from MinIO service, and keeps track if
 // those credentials are expired.
 type STSWebIdentity struct {
 	Expiry
 
-	// Required http Client to use when connecting to Minio STS service.
+	// Required http Client to use when connecting to MinIO STS service.
 	Client *http.Client
 
-	// Minio endpoint to fetch STS credentials.
+	// MinIO endpoint to fetch STS credentials.
 	stsEndpoint string
 
 	// getWebIDTokenExpiry function which returns ID tokens
@@ -75,6 +76,13 @@ type STSWebIdentity struct {
 	// this token.
 	// This is a customer provided function and is mandatory.
 	getWebIDTokenExpiry func() (*WebIdentityToken, error)
+
+	// roleARN is the Amazon Resource Name (ARN) of the role that the caller is
+	// assuming.
+	roleARN string
+
+	// roleSessionName is the identifier for the assumed role session.
+	roleSessionName string
 }
 
 // NewSTSWebIdentity returns a pointer to a new
@@ -95,7 +103,7 @@ func NewSTSWebIdentity(stsEndpoint string, getWebIDTokenExpiry func() (*WebIdent
 	}), nil
 }
 
-func getWebIdentityCredentials(clnt *http.Client, endpoint string,
+func getWebIdentityCredentials(clnt *http.Client, endpoint, roleARN, roleSessionName string,
 	getWebIDTokenExpiry func() (*WebIdentityToken, error)) (AssumeRoleWithWebIdentityResponse, error) {
 	idToken, err := getWebIDTokenExpiry()
 	if err != nil {
@@ -104,8 +112,18 @@ func getWebIdentityCredentials(clnt *http.Client, endpoint string,
 
 	v := url.Values{}
 	v.Set("Action", "AssumeRoleWithWebIdentity")
+	if len(roleARN) > 0 {
+		v.Set("RoleArn", roleARN)
+
+		if len(roleSessionName) == 0 {
+			roleSessionName = strconv.FormatInt(time.Now().UnixNano(), 10)
+		}
+		v.Set("RoleSessionName", roleSessionName)
+	}
 	v.Set("WebIdentityToken", idToken.Token)
-	v.Set("DurationSeconds", fmt.Sprintf("%d", idToken.Expiry))
+	if idToken.Expiry > 0 {
+		v.Set("DurationSeconds", fmt.Sprintf("%d", idToken.Expiry))
+	}
 	v.Set("Version", "2011-06-15")
 
 	u, err := url.Parse(endpoint)
@@ -115,7 +133,7 @@ func getWebIdentityCredentials(clnt *http.Client, endpoint string,
 
 	u.RawQuery = v.Encode()
 
-	req, err := http.NewRequest("POST", u.String(), nil)
+	req, err := http.NewRequest(http.MethodPost, u.String(), nil)
 	if err != nil {
 		return AssumeRoleWithWebIdentityResponse{}, err
 	}
@@ -138,10 +156,10 @@ func getWebIdentityCredentials(clnt *http.Client, endpoint string,
 	return a, nil
 }
 
-// Retrieve retrieves credentials from the Minio service.
+// Retrieve retrieves credentials from the MinIO service.
 // Error will be returned if the request fails.
 func (m *STSWebIdentity) Retrieve() (Value, error) {
-	a, err := getWebIdentityCredentials(m.Client, m.stsEndpoint, m.getWebIDTokenExpiry)
+	a, err := getWebIdentityCredentials(m.Client, m.stsEndpoint, m.roleARN, m.roleSessionName, m.getWebIDTokenExpiry)
 	if err != nil {
 		return Value{}, err
 	}
@@ -155,4 +173,9 @@ func (m *STSWebIdentity) Retrieve() (Value, error) {
 		SessionToken:    a.Result.Credentials.SessionToken,
 		SignerType:      SignatureV4,
 	}, nil
+}
+
+// Expiration returns the expiration time of the credentials
+func (m *STSWebIdentity) Expiration() time.Time {
+	return m.expiration
 }

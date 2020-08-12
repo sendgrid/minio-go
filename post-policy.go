@@ -1,6 +1,6 @@
 /*
- * Minio Go Library for Amazon S3 Compatible Cloud Storage
- * Copyright 2015-2017 Minio, Inc.
+ * MinIO Go Library for Amazon S3 Compatible Cloud Storage
+ * Copyright 2015-2017 MinIO, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -73,7 +73,7 @@ func NewPostPolicy() *PostPolicy {
 // SetExpires - Sets expiration time for the new policy.
 func (p *PostPolicy) SetExpires(t time.Time) error {
 	if t.IsZero() {
-		return ErrInvalidArgument("No expiry time set.")
+		return errInvalidArgument("No expiry time set.")
 	}
 	p.expiration = t
 	return nil
@@ -82,7 +82,7 @@ func (p *PostPolicy) SetExpires(t time.Time) error {
 // SetKey - Sets an object name for the policy based upload.
 func (p *PostPolicy) SetKey(key string) error {
 	if strings.TrimSpace(key) == "" || key == "" {
-		return ErrInvalidArgument("Object name is empty.")
+		return errInvalidArgument("Object name is empty.")
 	}
 	policyCond := policyCondition{
 		matchType: "eq",
@@ -100,7 +100,7 @@ func (p *PostPolicy) SetKey(key string) error {
 // can start with.
 func (p *PostPolicy) SetKeyStartsWith(keyStartsWith string) error {
 	if strings.TrimSpace(keyStartsWith) == "" || keyStartsWith == "" {
-		return ErrInvalidArgument("Object prefix is empty.")
+		return errInvalidArgument("Object prefix is empty.")
 	}
 	policyCond := policyCondition{
 		matchType: "starts-with",
@@ -117,7 +117,7 @@ func (p *PostPolicy) SetKeyStartsWith(keyStartsWith string) error {
 // SetBucket - Sets bucket at which objects will be uploaded to.
 func (p *PostPolicy) SetBucket(bucketName string) error {
 	if strings.TrimSpace(bucketName) == "" || bucketName == "" {
-		return ErrInvalidArgument("Bucket name is empty.")
+		return errInvalidArgument("Bucket name is empty.")
 	}
 	policyCond := policyCondition{
 		matchType: "eq",
@@ -131,11 +131,32 @@ func (p *PostPolicy) SetBucket(bucketName string) error {
 	return nil
 }
 
+// SetCondition - Sets condition for credentials, date and algorithm
+func (p *PostPolicy) SetCondition(matchType, condition, value string) error {
+	if strings.TrimSpace(value) == "" || value == "" {
+		return errInvalidArgument("No value specified for condition")
+	}
+
+	policyCond := policyCondition{
+		matchType: matchType,
+		condition: "$" + condition,
+		value:     value,
+	}
+	if condition == "X-Amz-Credential" || condition == "X-Amz-Date" || condition == "X-Amz-Algorithm" {
+		if err := p.addNewPolicy(policyCond); err != nil {
+			return err
+		}
+		p.formData[condition] = value
+		return nil
+	}
+	return errInvalidArgument("Invalid condition in policy")
+}
+
 // SetContentType - Sets content-type of the object for this policy
 // based upload.
 func (p *PostPolicy) SetContentType(contentType string) error {
 	if strings.TrimSpace(contentType) == "" || contentType == "" {
-		return ErrInvalidArgument("No content type specified.")
+		return errInvalidArgument("No content type specified.")
 	}
 	policyCond := policyCondition{
 		matchType: "eq",
@@ -153,16 +174,34 @@ func (p *PostPolicy) SetContentType(contentType string) error {
 // condition for all incoming uploads.
 func (p *PostPolicy) SetContentLengthRange(min, max int64) error {
 	if min > max {
-		return ErrInvalidArgument("Minimum limit is larger than maximum limit.")
+		return errInvalidArgument("Minimum limit is larger than maximum limit.")
 	}
 	if min < 0 {
-		return ErrInvalidArgument("Minimum limit cannot be negative.")
+		return errInvalidArgument("Minimum limit cannot be negative.")
 	}
 	if max < 0 {
-		return ErrInvalidArgument("Maximum limit cannot be negative.")
+		return errInvalidArgument("Maximum limit cannot be negative.")
 	}
 	p.contentLengthRange.min = min
 	p.contentLengthRange.max = max
+	return nil
+}
+
+// SetSuccessActionRedirect - Sets the redirect success url of the object for this policy
+// based upload.
+func (p *PostPolicy) SetSuccessActionRedirect(redirect string) error {
+	if strings.TrimSpace(redirect) == "" || redirect == "" {
+		return errInvalidArgument("Redirect is empty")
+	}
+	policyCond := policyCondition{
+		matchType: "eq",
+		condition: "$success_action_redirect",
+		value:     redirect,
+	}
+	if err := p.addNewPolicy(policyCond); err != nil {
+		return err
+	}
+	p.formData["success_action_redirect"] = redirect
 	return nil
 }
 
@@ -170,7 +209,7 @@ func (p *PostPolicy) SetContentLengthRange(min, max int64) error {
 // based upload.
 func (p *PostPolicy) SetSuccessStatusAction(status string) error {
 	if strings.TrimSpace(status) == "" || status == "" {
-		return ErrInvalidArgument("Status is empty")
+		return errInvalidArgument("Status is empty")
 	}
 	policyCond := policyCondition{
 		matchType: "eq",
@@ -188,10 +227,10 @@ func (p *PostPolicy) SetSuccessStatusAction(status string) error {
 // Can be retrieved through a HEAD request or an event.
 func (p *PostPolicy) SetUserMetadata(key string, value string) error {
 	if strings.TrimSpace(key) == "" || key == "" {
-		return ErrInvalidArgument("Key is empty")
+		return errInvalidArgument("Key is empty")
 	}
 	if strings.TrimSpace(value) == "" || value == "" {
-		return ErrInvalidArgument("Value is empty")
+		return errInvalidArgument("Value is empty")
 	}
 	headerName := fmt.Sprintf("x-amz-meta-%s", key)
 	policyCond := policyCondition{
@@ -210,10 +249,10 @@ func (p *PostPolicy) SetUserMetadata(key string, value string) error {
 // Can be retrieved through a HEAD request or an event.
 func (p *PostPolicy) SetUserData(key string, value string) error {
 	if key == "" {
-		return ErrInvalidArgument("Key is empty")
+		return errInvalidArgument("Key is empty")
 	}
 	if value == "" {
-		return ErrInvalidArgument("Value is empty")
+		return errInvalidArgument("Value is empty")
 	}
 	headerName := fmt.Sprintf("x-amz-%s", key)
 	policyCond := policyCondition{
@@ -231,18 +270,18 @@ func (p *PostPolicy) SetUserData(key string, value string) error {
 // addNewPolicy - internal helper to validate adding new policies.
 func (p *PostPolicy) addNewPolicy(policyCond policyCondition) error {
 	if policyCond.matchType == "" || policyCond.condition == "" || policyCond.value == "" {
-		return ErrInvalidArgument("Policy fields are empty.")
+		return errInvalidArgument("Policy fields are empty.")
 	}
 	p.conditions = append(p.conditions, policyCond)
 	return nil
 }
 
-// Stringer interface for printing policy in json formatted string.
+// String function for printing policy in json formatted string.
 func (p PostPolicy) String() string {
 	return string(p.marshalJSON())
 }
 
-// marshalJSON - Provides Marshalled JSON in bytes.
+// marshalJSON - Provides Marshaled JSON in bytes.
 func (p PostPolicy) marshalJSON() []byte {
 	expirationStr := `"expiration":"` + p.expiration.Format(expirationDateFormat) + `"`
 	var conditionsStr string
@@ -264,7 +303,7 @@ func (p PostPolicy) marshalJSON() []byte {
 	return []byte(retStr)
 }
 
-// base64 - Produces base64 of PostPolicy's Marshalled json.
+// base64 - Produces base64 of PostPolicy's Marshaled json.
 func (p PostPolicy) base64() string {
 	return base64.StdEncoding.EncodeToString(p.marshalJSON())
 }

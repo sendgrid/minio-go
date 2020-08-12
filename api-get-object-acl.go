@@ -1,6 +1,6 @@
 /*
- * Minio Go Library for Amazon S3 Compatible Cloud Storage
- * Copyright 2018 Minio, Inc.
+ * MinIO Go Library for Amazon S3 Compatible Cloud Storage
+ * Copyright 2018 MinIO, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -40,10 +40,9 @@ type accessControlPolicy struct {
 	} `xml:"AccessControlList"`
 }
 
-//GetObjectACL get object ACLs
-func (c Client) GetObjectACL(bucketName, objectName string) (*ObjectInfo, error) {
-
-	resp, err := c.executeMethod(context.Background(), "GET", requestMetadata{
+// GetObjectACL get object ACLs
+func (c Client) GetObjectACL(ctx context.Context, bucketName, objectName string) (*ObjectInfo, error) {
+	resp, err := c.executeMethod(ctx, http.MethodGet, requestMetadata{
 		bucketName: bucketName,
 		objectName: objectName,
 		queryValues: url.Values{
@@ -65,10 +64,15 @@ func (c Client) GetObjectACL(bucketName, objectName string) (*ObjectInfo, error)
 		return nil, err
 	}
 
-	objInfo, err := c.statObject(context.Background(), bucketName, objectName, StatObjectOptions{})
+	objInfo, err := c.statObject(ctx, bucketName, objectName, StatObjectOptions{})
 	if err != nil {
 		return nil, err
 	}
+
+	objInfo.Owner.DisplayName = res.Owner.DisplayName
+	objInfo.Owner.ID = res.Owner.ID
+
+	objInfo.Grant = append(objInfo.Grant, res.AccessControlList.Grant...)
 
 	cannedACL := getCannedACL(res)
 	if cannedACL != "" {

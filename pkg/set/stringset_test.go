@@ -1,6 +1,6 @@
 /*
- * Minio Go Library for Amazon S3 Compatible Cloud Storage
- * Copyright 2015-2017 Minio, Inc.
+ * MinIO Go Library for Amazon S3 Compatible Cloud Storage
+ * Copyright 2015-2017 MinIO, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -127,7 +127,7 @@ func TestStringSetFuncMatch(t *testing.T) {
 	}{
 		// Test to check match function doing case insensive compare.
 		{func(setValue string, compareValue string) bool {
-			return strings.ToUpper(setValue) == strings.ToUpper(compareValue)
+			return strings.EqualFold(setValue, compareValue)
 		}, "Bar", `[bar]`},
 		// Test to check match function doing prefix check.
 		{func(setValue string, compareValue string) bool {

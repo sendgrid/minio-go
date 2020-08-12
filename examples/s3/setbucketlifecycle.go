@@ -1,8 +1,8 @@
 // +build ignore
 
 /*
- * Minio Go Library for Amazon S3 Compatible Cloud Storage
- * Copyright 2015-2017 Minio, Inc.
+ * MinIO Go Library for Amazon S3 Compatible Cloud Storage
+ * Copyright 2015-2017 MinIO, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,9 +20,12 @@
 package main
 
 import (
+	"context"
 	"log"
 
-	"github.com/minio/minio-go"
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
+	"github.com/minio/minio-go/v7/pkg/lifecycle"
 )
 
 func main() {
@@ -34,7 +37,10 @@ func main() {
 
 	// New returns an Amazon S3 compatible client object. API compatibility (v2 or v4) is automatically
 	// determined based on the Endpoint value.
-	s3Client, err := minio.New("s3.amazonaws.com", "YOUR-ACCESSKEYID", "YOUR-SECRETACCESSKEY", true)
+	s3Client, err := minio.New("s3.amazonaws.com", &minio.Options{
+		Creds:  credentials.NewStaticV4("YOUR-ACCESSKEYID", "YOUR-SECRETACCESSKEY", ""),
+		Secure: true,
+	})
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -42,8 +48,17 @@ func main() {
 	// s3Client.TraceOn(os.Stderr)
 
 	// Set lifecycle on a bucket
-	lifecycle := `<LifecycleConfiguration><Rule><ID>expire-bucket</ID><Prefix></Prefix><Status>Enabled</Status><Expiration><Days>365</Days></Expiration></Rule></LifecycleConfiguration>`
-	err = s3Client.SetBucketLifecycle("my-bucketname", lifecycle)
+	config := lifecycle.NewConfiguration()
+	config.Rules = []lifecycle.Rule{
+		{
+			ID:     "expire-bucket",
+			Status: "Enabled",
+			Expiration: lifecycle.Expiration{
+				Days: 365,
+			},
+		},
+	}
+	err = s3Client.SetBucketLifecycle(context.Background(), "my-bucketname", config)
 	if err != nil {
 		log.Fatalln(err)
 	}

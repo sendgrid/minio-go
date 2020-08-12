@@ -1,6 +1,6 @@
 /*
- * Minio Go Library for Amazon S3 Compatible Cloud Storage
- * Copyright 2015-2017 Minio, Inc.
+ * MinIO Go Library for Amazon S3 Compatible Cloud Storage
+ * Copyright 2015-2020 MinIO, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,35 +21,34 @@ import (
 	"bytes"
 	"context"
 	"encoding/xml"
-	"io/ioutil"
 	"net/http"
-	"net/url"
-	"strings"
 
-	"github.com/minio/minio-go/pkg/s3utils"
+	"github.com/minio/minio-go/v7/pkg/s3utils"
 )
 
 /// Bucket operations
+func (c Client) makeBucket(ctx context.Context, bucketName string, opts MakeBucketOptions) (err error) {
+	// Validate the input arguments.
+	if err := s3utils.CheckValidBucketNameStrict(bucketName); err != nil {
+		return err
+	}
 
-// MakeBucket creates a new bucket with bucketName.
-//
-// Location is an optional argument, by default all buckets are
-// created in US Standard Region.
-//
-// For Amazon S3 for more supported regions - http://docs.aws.amazon.com/general/latest/gr/rande.html
-// For Google Cloud Storage for more supported regions - https://cloud.google.com/storage/docs/bucket-locations
-func (c Client) MakeBucket(bucketName string, location string) (err error) {
+	err = c.doMakeBucket(ctx, bucketName, opts.Region, opts.ObjectLocking)
+	if err != nil && (opts.Region == "" || opts.Region == "us-east-1") {
+		if resp, ok := err.(ErrorResponse); ok && resp.Code == "AuthorizationHeaderMalformed" && resp.Region != "" {
+			err = c.doMakeBucket(ctx, bucketName, resp.Region, opts.ObjectLocking)
+		}
+	}
+	return err
+}
+
+func (c Client) doMakeBucket(ctx context.Context, bucketName string, location string, objectLockEnabled bool) (err error) {
 	defer func() {
 		// Save the location into cache on a successful makeBucket response.
 		if err == nil {
 			c.bucketLocCache.Set(bucketName, location)
 		}
 	}()
-
-	// Validate the input arguments.
-	if err := s3utils.CheckValidBucketNameStrict(bucketName); err != nil {
-		return err
-	}
 
 	// If location is empty, treat is a default region 'us-east-1'.
 	if location == "" {
@@ -64,6 +63,12 @@ func (c Client) MakeBucket(bucketName string, location string) (err error) {
 	reqMetadata := requestMetadata{
 		bucketName:     bucketName,
 		bucketLocation: location,
+	}
+
+	if objectLockEnabled {
+		headers := make(http.Header)
+		headers.Add("x-amz-bucket-object-lock-enabled", "true")
+		reqMetadata.customHeader = headers
 	}
 
 	// If location is not 'us-east-1' create bucket location config.
@@ -82,7 +87,7 @@ func (c Client) MakeBucket(bucketName string, location string) (err error) {
 	}
 
 	// Execute PUT to create a new bucket.
-	resp, err := c.executeMethod(context.Background(), "PUT", reqMetadata)
+	resp, err := c.executeMethod(ctx, http.MethodPut, reqMetadata)
 	defer closeResponse(resp)
 	if err != nil {
 		return err
@@ -98,209 +103,21 @@ func (c Client) MakeBucket(bucketName string, location string) (err error) {
 	return nil
 }
 
-// SetBucketPolicy set the access permissions on an existing bucket.
-func (c Client) SetBucketPolicy(bucketName, policy string) error {
-	// Input validation.
-	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
-		return err
-	}
-
-	// If policy is empty then delete the bucket policy.
-	if policy == "" {
-		return c.removeBucketPolicy(bucketName)
-	}
-
-	// Save the updated policies.
-	return c.putBucketPolicy(bucketName, policy)
+// MakeBucketOptions holds all options to tweak bucket creation
+type MakeBucketOptions struct {
+	// Bucket location
+	Region string
+	// Enable object locking
+	ObjectLocking bool
 }
 
-// Saves a new bucket policy.
-func (c Client) putBucketPolicy(bucketName, policy string) error {
-	// Input validation.
-	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
-		return err
-	}
-
-	// Get resources properly escaped and lined up before
-	// using them in http request.
-	urlValues := make(url.Values)
-	urlValues.Set("policy", "")
-
-	// Content-length is mandatory for put policy request
-	policyReader := strings.NewReader(policy)
-	b, err := ioutil.ReadAll(policyReader)
-	if err != nil {
-		return err
-	}
-
-	reqMetadata := requestMetadata{
-		bucketName:    bucketName,
-		queryValues:   urlValues,
-		contentBody:   policyReader,
-		contentLength: int64(len(b)),
-	}
-
-	// Execute PUT to upload a new bucket policy.
-	resp, err := c.executeMethod(context.Background(), "PUT", reqMetadata)
-	defer closeResponse(resp)
-	if err != nil {
-		return err
-	}
-	if resp != nil {
-		if resp.StatusCode != http.StatusNoContent {
-			return httpRespToErrorResponse(resp, bucketName, "")
-		}
-	}
-	return nil
-}
-
-// Removes all policies on a bucket.
-func (c Client) removeBucketPolicy(bucketName string) error {
-	// Input validation.
-	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
-		return err
-	}
-	// Get resources properly escaped and lined up before
-	// using them in http request.
-	urlValues := make(url.Values)
-	urlValues.Set("policy", "")
-
-	// Execute DELETE on objectName.
-	resp, err := c.executeMethod(context.Background(), "DELETE", requestMetadata{
-		bucketName:       bucketName,
-		queryValues:      urlValues,
-		contentSHA256Hex: emptySHA256Hex,
-	})
-	defer closeResponse(resp)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-// SetBucketLifecycle set the lifecycle on an existing bucket.
-func (c Client) SetBucketLifecycle(bucketName, lifecycle string) error {
-	// Input validation.
-	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
-		return err
-	}
-
-	// If lifecycle is empty then delete it.
-	if lifecycle == "" {
-		return c.removeBucketLifecycle(bucketName)
-	}
-
-	// Save the updated lifecycle.
-	return c.putBucketLifecycle(bucketName, lifecycle)
-}
-
-// Saves a new bucket lifecycle.
-func (c Client) putBucketLifecycle(bucketName, lifecycle string) error {
-	// Input validation.
-	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
-		return err
-	}
-
-	// Get resources properly escaped and lined up before
-	// using them in http request.
-	urlValues := make(url.Values)
-	urlValues.Set("lifecycle", "")
-
-	// Content-length is mandatory for put lifecycle request
-	lifecycleReader := strings.NewReader(lifecycle)
-	b, err := ioutil.ReadAll(lifecycleReader)
-	if err != nil {
-		return err
-	}
-
-	reqMetadata := requestMetadata{
-		bucketName:       bucketName,
-		queryValues:      urlValues,
-		contentBody:      lifecycleReader,
-		contentLength:    int64(len(b)),
-		contentMD5Base64: sumMD5Base64(b),
-	}
-
-	// Execute PUT to upload a new bucket lifecycle.
-	resp, err := c.executeMethod(context.Background(), "PUT", reqMetadata)
-	defer closeResponse(resp)
-	if err != nil {
-		return err
-	}
-	if resp != nil {
-		if resp.StatusCode != http.StatusOK {
-			return httpRespToErrorResponse(resp, bucketName, "")
-		}
-	}
-	return nil
-}
-
-// Remove lifecycle from a bucket.
-func (c Client) removeBucketLifecycle(bucketName string) error {
-	// Input validation.
-	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
-		return err
-	}
-	// Get resources properly escaped and lined up before
-	// using them in http request.
-	urlValues := make(url.Values)
-	urlValues.Set("lifecycle", "")
-
-	// Execute DELETE on objectName.
-	resp, err := c.executeMethod(context.Background(), "DELETE", requestMetadata{
-		bucketName:       bucketName,
-		queryValues:      urlValues,
-		contentSHA256Hex: emptySHA256Hex,
-	})
-	defer closeResponse(resp)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-// SetBucketNotification saves a new bucket notification.
-func (c Client) SetBucketNotification(bucketName string, bucketNotification BucketNotification) error {
-	// Input validation.
-	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
-		return err
-	}
-
-	// Get resources properly escaped and lined up before
-	// using them in http request.
-	urlValues := make(url.Values)
-	urlValues.Set("notification", "")
-
-	notifBytes, err := xml.Marshal(bucketNotification)
-	if err != nil {
-		return err
-	}
-
-	notifBuffer := bytes.NewReader(notifBytes)
-	reqMetadata := requestMetadata{
-		bucketName:       bucketName,
-		queryValues:      urlValues,
-		contentBody:      notifBuffer,
-		contentLength:    int64(len(notifBytes)),
-		contentMD5Base64: sumMD5Base64(notifBytes),
-		contentSHA256Hex: sum256Hex(notifBytes),
-	}
-
-	// Execute PUT to upload a new bucket notification.
-	resp, err := c.executeMethod(context.Background(), "PUT", reqMetadata)
-	defer closeResponse(resp)
-	if err != nil {
-		return err
-	}
-	if resp != nil {
-		if resp.StatusCode != http.StatusOK {
-			return httpRespToErrorResponse(resp, bucketName, "")
-		}
-	}
-	return nil
-}
-
-// RemoveAllBucketNotification - Remove bucket notification clears all previously specified config
-func (c Client) RemoveAllBucketNotification(bucketName string) error {
-	return c.SetBucketNotification(bucketName, BucketNotification{})
+// MakeBucket creates a new bucket with bucketName with a context to control cancellations and timeouts.
+//
+// Location is an optional argument, by default all buckets are
+// created in US Standard Region.
+//
+// For Amazon S3 for more supported regions - http://docs.aws.amazon.com/general/latest/gr/rande.html
+// For Google Cloud Storage for more supported regions - https://cloud.google.com/storage/docs/bucket-locations
+func (c Client) MakeBucket(ctx context.Context, bucketName string, opts MakeBucketOptions) (err error) {
+	return c.makeBucket(ctx, bucketName, opts)
 }

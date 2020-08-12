@@ -1,6 +1,6 @@
 /*
- * Minio Go Library for Amazon S3 Compatible Cloud Storage
- * Copyright 2015-2018 Minio, Inc.
+ * MinIO Go Library for Amazon S3 Compatible Cloud Storage
+ * Copyright 2015-2018 MinIO, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,11 +20,8 @@ package minio
 import (
 	"bytes"
 	"context"
-	"crypto/md5"
-	"crypto/sha256"
 	"errors"
 	"fmt"
-	"hash"
 	"io"
 	"io/ioutil"
 	"math/rand"
@@ -39,11 +36,11 @@ import (
 	"sync"
 	"time"
 
+	md5simd "github.com/minio/md5-simd"
+	"github.com/minio/minio-go/v7/pkg/credentials"
+	"github.com/minio/minio-go/v7/pkg/s3utils"
+	"github.com/minio/minio-go/v7/pkg/signer"
 	"golang.org/x/net/publicsuffix"
-
-	"github.com/minio/minio-go/pkg/credentials"
-	"github.com/minio/minio-go/pkg/s3signer"
-	"github.com/minio/minio-go/pkg/s3utils"
 )
 
 // Client implements Amazon S3 compatible methods.
@@ -73,8 +70,9 @@ type Client struct {
 	bucketLocCache *bucketLocationCache
 
 	// Advanced functionality.
-	isTraceEnabled bool
-	traceOutput    io.Writer
+	isTraceEnabled  bool
+	traceErrorsOnly bool
+	traceOutput     io.Writer
 
 	// S3 specific accelerated endpoint.
 	s3AccelerateEndpoint string
@@ -88,29 +86,37 @@ type Client struct {
 	// lookup indicates type of url lookup supported by server. If not specified,
 	// default to Auto.
 	lookup BucketLookupType
+
+	// Factory for MD5 hash functions.
+	md5Hasher    func() md5simd.Hasher
+	sha256Hasher func() md5simd.Hasher
 }
 
 // Options for New method
 type Options struct {
 	Creds        *credentials.Credentials
 	Secure       bool
+	Transport    http.RoundTripper
 	Region       string
 	BucketLookup BucketLookupType
-	// Add future fields here
+
+	// Custom hash routines. Leave nil to use standard.
+	CustomMD5    func() md5simd.Hasher
+	CustomSHA256 func() md5simd.Hasher
 }
 
 // Global constants.
 const (
 	libraryName    = "minio-go"
-	libraryVersion = "v6.0.17"
+	libraryVersion = "v7.0.4"
 )
 
 // User Agent should always following the below style.
 // Please open an issue to discuss any new changes here.
 //
-//       Minio (OS; ARCH) LIB/VER APP/VER
+//       MinIO (OS; ARCH) LIB/VER APP/VER
 const (
-	libraryUserAgentPrefix = "Minio (" + runtime.GOOS + "; " + runtime.GOARCH + ") "
+	libraryUserAgentPrefix = "MinIO (" + runtime.GOOS + "; " + runtime.GOARCH + ") "
 	libraryUserAgent       = libraryUserAgentPrefix + libraryName + "/" + libraryVersion
 )
 
@@ -124,34 +130,12 @@ const (
 	BucketLookupPath
 )
 
-// NewV2 - instantiate minio client with Amazon S3 signature version
-// '2' compatibility.
-func NewV2(endpoint string, accessKeyID, secretAccessKey string, secure bool) (*Client, error) {
-	creds := credentials.NewStaticV2(accessKeyID, secretAccessKey, "")
-	clnt, err := privateNew(endpoint, creds, secure, "", BucketLookupAuto)
-	if err != nil {
-		return nil, err
+// New - instantiate minio client with options
+func New(endpoint string, opts *Options) (*Client, error) {
+	if opts == nil {
+		return nil, errors.New("no options provided")
 	}
-	clnt.overrideSignerType = credentials.SignatureV2
-	return clnt, nil
-}
-
-// NewV4 - instantiate minio client with Amazon S3 signature version
-// '4' compatibility.
-func NewV4(endpoint string, accessKeyID, secretAccessKey string, secure bool) (*Client, error) {
-	creds := credentials.NewStaticV4(accessKeyID, secretAccessKey, "")
-	clnt, err := privateNew(endpoint, creds, secure, "", BucketLookupAuto)
-	if err != nil {
-		return nil, err
-	}
-	clnt.overrideSignerType = credentials.SignatureV4
-	return clnt, nil
-}
-
-// New - instantiate minio client, adds automatic verification of signature.
-func New(endpoint, accessKeyID, secretAccessKey string, secure bool) (*Client, error) {
-	creds := credentials.NewStaticV4(accessKeyID, secretAccessKey, "")
-	clnt, err := privateNew(endpoint, creds, secure, "", BucketLookupAuto)
+	clnt, err := privateNew(endpoint, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -163,27 +147,14 @@ func New(endpoint, accessKeyID, secretAccessKey string, secure bool) (*Client, e
 	if s3utils.IsAmazonEndpoint(*clnt.endpointURL) {
 		clnt.overrideSignerType = credentials.SignatureV4
 	}
+
 	return clnt, nil
 }
 
-// NewWithCredentials - instantiate minio client with credentials provider
-// for retrieving credentials from various credentials provider such as
-// IAM, File, Env etc.
-func NewWithCredentials(endpoint string, creds *credentials.Credentials, secure bool, region string) (*Client, error) {
-	return privateNew(endpoint, creds, secure, region, BucketLookupAuto)
-}
-
-// NewWithRegion - instantiate minio client, with region configured. Unlike New(),
-// NewWithRegion avoids bucket-location lookup operations and it is slightly faster.
-// Use this function when if your application deals with single region.
-func NewWithRegion(endpoint, accessKeyID, secretAccessKey string, secure bool, region string) (*Client, error) {
-	creds := credentials.NewStaticV4(accessKeyID, secretAccessKey, "")
-	return privateNew(endpoint, creds, secure, region, BucketLookupAuto)
-}
-
-// NewWithOptions - instantiate minio client with options
-func NewWithOptions(endpoint string, opts *Options) (*Client, error) {
-	return privateNew(endpoint, opts.Creds, opts.Secure, opts.Region, opts.BucketLookup)
+// EndpointURL returns the URL of the S3 endpoint.
+func (c *Client) EndpointURL() *url.URL {
+	endpoint := *c.endpointURL // copy to prevent callers from modifying internal state
+	return &endpoint
 }
 
 // UseHostPicker makes the client ignore endpointUrl instead uses the hostPicker passed in
@@ -291,15 +262,15 @@ func (c *Client) redirectHeaders(req *http.Request, via []*http.Request) error {
 		case signerType.IsV2():
 			return errors.New("signature V2 cannot support redirection")
 		case signerType.IsV4():
-			req = s3signer.SignV4(*req, accessKeyID, secretAccessKey, sessionToken, getDefaultLocation(*c.endpointURL, region))
+			signer.SignV4(*req, accessKeyID, secretAccessKey, sessionToken, getDefaultLocation(*c.endpointURL, region))
 		}
 	}
 	return nil
 }
 
-func privateNew(endpoint string, creds *credentials.Credentials, secure bool, region string, lookup BucketLookupType) (*Client, error) {
+func privateNew(endpoint string, opts *Options) (*Client, error) {
 	// construct endpoint.
-	endpointURL, err := getEndpointURL(endpoint, secure)
+	endpointURL, err := getEndpointURL(endpoint, opts.Secure)
 	if err != nil {
 		return nil, err
 	}
@@ -315,26 +286,34 @@ func privateNew(endpoint string, creds *credentials.Credentials, secure bool, re
 	clnt := new(Client)
 
 	// Save the credentials.
-	clnt.credsProvider = creds
+	clnt.credsProvider = opts.Creds
 
 	// Remember whether we are using https or not
-	clnt.secure = secure
+	clnt.secure = opts.Secure
 
 	// Save endpoint URL, user agent for future uses.
 	clnt.endpointURL = endpointURL
 
+	transport := opts.Transport
+	if transport == nil {
+		transport, err = DefaultTransport(opts.Secure)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	// Instantiate http client and bucket location cache.
 	clnt.httpClient = &http.Client{
 		Jar:           jar,
-		Transport:     DefaultTransport,
+		Transport:     transport,
 		CheckRedirect: clnt.redirectHeaders,
 	}
 
 	// Sets custom region, if region is empty bucket location cache is used automatically.
-	if region == "" {
-		region = s3utils.GetRegionFromURL(*clnt.endpointURL)
+	if opts.Region == "" {
+		opts.Region = s3utils.GetRegionFromURL(*clnt.endpointURL)
 	}
-	clnt.region = region
+	clnt.region = opts.Region
 
 	// Instantiate bucket location cache.
 	clnt.bucketLocCache = newBucketLocationCache()
@@ -342,9 +321,18 @@ func privateNew(endpoint string, creds *credentials.Credentials, secure bool, re
 	// Introduce a new locked random seed.
 	clnt.random = rand.New(&lockedRandSource{src: rand.NewSource(time.Now().UTC().UnixNano())})
 
+	// Add default md5 hasher.
+	clnt.md5Hasher = opts.CustomMD5
+	clnt.sha256Hasher = opts.CustomSHA256
+	if clnt.md5Hasher == nil {
+		clnt.md5Hasher = newMd5Hasher
+	}
+	if clnt.sha256Hasher == nil {
+		clnt.sha256Hasher = newSHA256Hasher
+	}
 	// Sets bucket lookup style, whether server accepts DNS or Path lookup. Default is Auto - determined
 	// by the SDK. When Auto is specified, DNS lookup is used for Amazon/Google cloud endpoints and Path for all other endpoints.
-	clnt.lookup = lookup
+	clnt.lookup = opts.BucketLookup
 	// Return.
 	return clnt, nil
 }
@@ -353,33 +341,8 @@ func privateNew(endpoint string, creds *credentials.Credentials, secure bool, re
 func (c *Client) SetAppInfo(appName string, appVersion string) {
 	// if app name and version not set, we do not set a new user agent.
 	if appName != "" && appVersion != "" {
-		c.appInfo = struct {
-			appName    string
-			appVersion string
-		}{}
 		c.appInfo.appName = appName
 		c.appInfo.appVersion = appVersion
-	}
-}
-
-// SetCustomTransport - set new custom transport.
-func (c *Client) SetCustomTransport(customHTTPTransport http.RoundTripper) {
-	// Set this to override default transport
-	// ``http.DefaultTransport``.
-	//
-	// This transport is usually needed for debugging OR to add your
-	// own custom TLS certificates on the client transport, for custom
-	// CA's and certs which are not part of standard certificate
-	// authority follow this example :-
-	//
-	//   tr := &http.Transport{
-	//           TLSClientConfig:    &tls.Config{RootCAs: pool},
-	//           DisableCompression: true,
-	//   }
-	//   api.SetCustomTransport(tr)
-	//
-	if c.httpClient != nil {
-		c.httpClient.Transport = customHTTPTransport
 	}
 }
 
@@ -396,10 +359,23 @@ func (c *Client) TraceOn(outputStream io.Writer) {
 	c.isTraceEnabled = true
 }
 
+// TraceErrorsOnlyOn - same as TraceOn, but only errors will be traced.
+func (c *Client) TraceErrorsOnlyOn(outputStream io.Writer) {
+	c.TraceOn(outputStream)
+	c.traceErrorsOnly = true
+}
+
+// TraceErrorsOnlyOff - Turns off the errors only tracing and everything will be traced after this call.
+// If all tracing needs to be turned off, call TraceOff().
+func (c *Client) TraceErrorsOnlyOff() {
+	c.traceErrorsOnly = false
+}
+
 // TraceOff - disable HTTP tracing.
 func (c *Client) TraceOff() {
 	// Disable tracing.
 	c.isTraceEnabled = false
+	c.traceErrorsOnly = false
 }
 
 // SetS3TransferAccelerate - turns s3 accelerated endpoint on or off for all your
@@ -419,19 +395,22 @@ func (c *Client) SetS3TransferAccelerate(accelerateEndpoint string) {
 //  - For signature v4 request if the connection is insecure compute only sha256.
 //  - For signature v4 request if the connection is secure compute only md5.
 //  - For anonymous request compute md5.
-func (c *Client) hashMaterials() (hashAlgos map[string]hash.Hash, hashSums map[string][]byte) {
+func (c *Client) hashMaterials(isMd5Requested bool) (hashAlgos map[string]md5simd.Hasher, hashSums map[string][]byte) {
 	hashSums = make(map[string][]byte)
-	hashAlgos = make(map[string]hash.Hash)
+	hashAlgos = make(map[string]md5simd.Hasher)
 	if c.overrideSignerType.IsV4() {
 		if c.secure {
-			hashAlgos["md5"] = md5.New()
+			hashAlgos["md5"] = c.md5Hasher()
 		} else {
-			hashAlgos["sha256"] = sha256.New()
+			hashAlgos["sha256"] = c.sha256Hasher()
 		}
 	} else {
 		if c.overrideSignerType.IsAnonymous() {
-			hashAlgos["md5"] = md5.New()
+			hashAlgos["md5"] = c.md5Hasher()
 		}
+	}
+	if isMd5Requested {
+		hashAlgos["md5"] = c.md5Hasher()
 	}
 	return hashAlgos, hashSums
 }
@@ -536,11 +515,12 @@ func (c Client) do(req *http.Request) (*http.Response, error) {
 	// Response cannot be non-nil, report error if thats the case.
 	if resp == nil {
 		msg := "Response is empty. " + reportIssue
-		return nil, ErrInvalidArgument(msg)
+		return nil, errInvalidArgument(msg)
 	}
 
-	// If trace is enabled, dump http request and response.
-	if c.isTraceEnabled {
+	// If trace is enabled, dump http request and response,
+	// except when the traceErrorsOnly enabled and the response's status code is ok
+	if c.isTraceEnabled && !(c.traceErrorsOnly && resp.StatusCode == http.StatusOK) {
 		err = c.dumpHTTP(req, resp)
 		if err != nil {
 			return nil, err
@@ -561,19 +541,26 @@ var successStatus = []int{
 // request upon any error up to maxRetries attempts in a binomially
 // delayed manner using a standard back off algorithm.
 func (c Client) executeMethod(ctx context.Context, method string, metadata requestMetadata) (res *http.Response, err error) {
-	var isRetryable bool     // Indicates if request can be retried.
+	var retryable bool       // Indicates if request can be retried.
 	var bodySeeker io.Seeker // Extracted seeker from io.Reader.
 	var reqRetry = MaxRetry  // Indicates how many times we can retry the request
 
+	defer func() {
+		if err != nil {
+			// close idle connections before returning, upon error.
+			c.httpClient.CloseIdleConnections()
+		}
+	}()
+
 	if metadata.contentBody != nil {
 		// Check if body is seekable then it is retryable.
-		bodySeeker, isRetryable = metadata.contentBody.(io.Seeker)
+		bodySeeker, retryable = metadata.contentBody.(io.Seeker)
 		switch bodySeeker {
 		case os.Stdin, os.Stdout, os.Stderr:
-			isRetryable = false
+			retryable = false
 		}
 		// Retry only when reader is seekable
-		if !isRetryable {
+		if !retryable {
 			reqRetry = 1
 		}
 
@@ -586,21 +573,21 @@ func (c Client) executeMethod(ctx context.Context, method string, metadata reque
 		}
 	}
 
-	// Create a done channel to control 'newRetryTimer' go routine.
-	doneCh := make(chan struct{}, 1)
+	// Create cancel context to control 'newRetryTimer' go routine.
+	retryCtx, cancel := context.WithCancel(ctx)
 
 	// Indicate to our routine to exit cleanly upon return.
-	defer close(doneCh)
+	defer cancel()
 
 	// Blank indentifier is kept here on purpose since 'range' without
 	// blank identifiers is only supported since go1.4
 	// https://golang.org/doc/go1.4#forrange.
-	for range c.newRetryTimer(reqRetry, DefaultRetryUnit, DefaultRetryCap, MaxJitter, doneCh) {
+	for range c.newRetryTimer(retryCtx, reqRetry, DefaultRetryUnit, DefaultRetryCap, MaxJitter) {
 		// Retry executes the following function body if request has an
 		// error until maxRetries have been exhausted, retry attempts are
 		// performed after waiting for a given period of time in a
 		// binomial fashion.
-		if isRetryable {
+		if retryable {
 			// Seek back to beginning for each attempt.
 			if _, err = bodySeeker.Seek(0, 0); err != nil {
 				// If seek failed, no need to retry.
@@ -610,7 +597,7 @@ func (c Client) executeMethod(ctx context.Context, method string, metadata reque
 
 		// Instantiate a new request.
 		var req *http.Request
-		req, err = c.newRequest(method, metadata)
+		req, err = c.newRequest(ctx, method, metadata)
 		if err != nil {
 			errResponse := ToErrorResponse(err)
 			if isS3CodeRetryable(errResponse.Code) {
@@ -625,12 +612,10 @@ func (c Client) executeMethod(ctx context.Context, method string, metadata reque
 		// Initiate the request.
 		res, err = c.do(req)
 		if err != nil {
-			// For supported http requests errors verify.
-			if isHTTPReqErrorRetryable(err) {
-				continue // Retry.
+			if err == context.Canceled || err == context.DeadlineExceeded {
+				return nil, err
 			}
-			// For other errors, return here no need to retry.
-			return nil, err
+			continue
 		}
 
 		// For any known successful http status, return quickly.
@@ -665,13 +650,32 @@ func (c Client) executeMethod(ctx context.Context, method string, metadata reque
 		//
 		// Additionally we should only retry if bucketLocation and custom
 		// region is empty.
-		if metadata.bucketLocation == "" && c.region == "" {
-			if errResponse.Code == "AuthorizationHeaderMalformed" || errResponse.Code == "InvalidRegion" {
-				if metadata.bucketName != "" && errResponse.Region != "" {
+		if c.region == "" {
+			switch errResponse.Code {
+			case "AuthorizationHeaderMalformed":
+				fallthrough
+			case "InvalidRegion":
+				fallthrough
+			case "AccessDenied":
+				if errResponse.Region == "" {
+					// Region is empty we simply return the error.
+					return res, err
+				}
+				// Region is not empty figure out a way to
+				// handle this appropriately.
+				if metadata.bucketName != "" {
 					// Gather Cached location only if bucketName is present.
-					if _, cachedLocationError := c.bucketLocCache.Get(metadata.bucketName); cachedLocationError != false {
+					if location, cachedOk := c.bucketLocCache.Get(metadata.bucketName); cachedOk && location != errResponse.Region {
 						c.bucketLocCache.Set(metadata.bucketName, errResponse.Region)
 						continue // Retry.
+					}
+				} else {
+					// This is for ListBuckets() fallback.
+					if errResponse.Region != metadata.bucketLocation {
+						// Retry if the error response has a different region
+						// than the request we just made.
+						metadata.bucketLocation = errResponse.Region
+						continue // Retry
 					}
 				}
 			}
@@ -690,29 +694,30 @@ func (c Client) executeMethod(ctx context.Context, method string, metadata reque
 		// For all other cases break out of the retry loop.
 		break
 	}
+
+	// Return an error when retry is canceled or deadlined
+	if e := retryCtx.Err(); e != nil {
+		return nil, e
+	}
+
 	return res, err
 }
 
 // newRequest - instantiate a new HTTP request for a given method.
-func (c Client) newRequest(method string, metadata requestMetadata) (req *http.Request, err error) {
+func (c Client) newRequest(ctx context.Context, method string, metadata requestMetadata) (req *http.Request, err error) {
 	// If no method is supplied default to 'POST'.
 	if method == "" {
-		method = "POST"
+		method = http.MethodPost
 	}
 
 	location := metadata.bucketLocation
 	if location == "" {
 		if metadata.bucketName != "" {
 			// Gather location only if bucketName is present.
-			location, err = c.getBucketLocation(metadata.bucketName)
+			location, err = c.getBucketLocation(ctx, metadata.bucketName)
 			if err != nil {
-				if ToErrorResponse(err).Code != "AccessDenied" {
-					return nil, err
-				}
+				return nil, err
 			}
-			// Upon AccessDenied error on fetching bucket location, default
-			// to possible locations based on endpoint URL. This can usually
-			// happen when GetBucketLocation() is disabled using IAM policies.
 		}
 		if location == "" {
 			location = getDefaultLocation(*c.endpointURL, c.region)
@@ -720,10 +725,14 @@ func (c Client) newRequest(method string, metadata requestMetadata) (req *http.R
 	}
 
 	// Look if target url supports virtual host.
-	isVirtualHost := c.isVirtualHostStyleRequest(*c.endpointURL, metadata.bucketName)
+	// We explicitly disallow MakeBucket calls to not use virtual DNS style,
+	// since the resolution may fail.
+	isMakeBucket := (metadata.objectName == "" && method == http.MethodPut && len(metadata.queryValues) == 0)
+	isVirtualHost := c.isVirtualHostStyleRequest(*c.endpointURL, metadata.bucketName) && !isMakeBucket
 
 	// Construct a new target URL.
-	targetURL, err := c.makeTargetURL(metadata.bucketName, metadata.objectName, location, isVirtualHost, metadata.queryValues)
+	targetURL, err := c.makeTargetURL(metadata.bucketName, metadata.objectName, location,
+		isVirtualHost, metadata.queryValues)
 	if err != nil {
 		return nil, err
 	}
@@ -761,14 +770,14 @@ func (c Client) newRequest(method string, metadata requestMetadata) (req *http.R
 	// Generate presign url if needed, return right here.
 	if metadata.expires != 0 && metadata.presignURL {
 		if signerType.IsAnonymous() {
-			return nil, ErrInvalidArgument("Presigned URLs cannot be generated with anonymous credentials.")
+			return nil, errInvalidArgument("Presigned URLs cannot be generated with anonymous credentials.")
 		}
 		if signerType.IsV2() {
 			// Presign URL with signature v2.
-			req = s3signer.PreSignV2(*req, accessKeyID, secretAccessKey, metadata.expires, isVirtualHost)
+			req = signer.PreSignV2(*req, accessKeyID, secretAccessKey, metadata.expires, isVirtualHost)
 		} else if signerType.IsV4() {
 			// Presign URL with signature v4.
-			req = s3signer.PreSignV4(*req, accessKeyID, secretAccessKey, sessionToken, location, metadata.expires)
+			req = signer.PreSignV4(*req, accessKeyID, secretAccessKey, sessionToken, location, metadata.expires)
 		}
 		return req, nil
 	}
@@ -811,12 +820,12 @@ func (c Client) newRequest(method string, metadata requestMetadata) (req *http.R
 	switch {
 	case signerType.IsV2():
 		// Add signature version '2' authorization header.
-		req = s3signer.SignV2(*req, accessKeyID, secretAccessKey, isVirtualHost)
-	case metadata.objectName != "" && method == "PUT" && metadata.customHeader.Get("X-Amz-Copy-Source") == "" && !c.secure:
+		req = signer.SignV2(*req, accessKeyID, secretAccessKey, isVirtualHost)
+	case metadata.objectName != "" && metadata.queryValues == nil && method == http.MethodPut && metadata.customHeader.Get("X-Amz-Copy-Source") == "" && !c.secure:
 		// Streaming signature is used by default for a PUT object request. Additionally we also
 		// look if the initialized client is secure, if yes then we don't need to perform
 		// streaming signature.
-		req = s3signer.StreamingSignV4(req, accessKeyID,
+		req = signer.StreamingSignV4(req, accessKeyID,
 			secretAccessKey, sessionToken, location, metadata.contentLength, time.Now().UTC())
 	default:
 		// Set sha256 sum for signature calculation only with signature version '4'.
@@ -827,7 +836,7 @@ func (c Client) newRequest(method string, metadata requestMetadata) (req *http.R
 		req.Header.Set("X-Amz-Content-Sha256", shaHeader)
 
 		// Add signature version '4' authorization header.
-		req = s3signer.SignV4(*req, accessKeyID, secretAccessKey, sessionToken, location)
+		req = signer.SignV4(*req, accessKeyID, secretAccessKey, sessionToken, location)
 	}
 
 	// Return request.
@@ -851,7 +860,7 @@ func (c Client) makeTargetURL(bucketName, objectName, bucketLocation string, isV
 			// http://docs.aws.amazon.com/AmazonS3/latest/dev/transfer-acceleration.html
 			// Disable transfer acceleration for non-compliant bucket names.
 			if strings.Contains(bucketName, ".") {
-				return nil, ErrTransferAccelerationBucket(bucketName)
+				return nil, errTransferAccelerationBucket(bucketName)
 			}
 			// If transfer acceleration is requested set new host.
 			// For more details about enabling transfer acceleration read here.

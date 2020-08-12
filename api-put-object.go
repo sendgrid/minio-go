@@ -1,6 +1,6 @@
 /*
- * Minio Go Library for Amazon S3 Compatible Cloud Storage
- * Copyright 2015-2017 Minio, Inc.
+ * MinIO Go Library for Amazon S3 Compatible Cloud Storage
+ * Copyright 2015-2017 MinIO, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,30 +20,61 @@ package minio
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
-	"runtime/debug"
 	"sort"
+	"time"
 
-	"github.com/minio/minio-go/pkg/encrypt"
-	"github.com/minio/minio-go/pkg/s3utils"
+	"github.com/minio/minio-go/v7/pkg/encrypt"
+	"github.com/minio/minio-go/v7/pkg/s3utils"
 	"golang.org/x/net/http/httpguts"
 )
+
+// ReplicationStatus represents replication status of object
+type ReplicationStatus string
+
+const (
+	// ReplicationStatusPending indicates replication is pending
+	ReplicationStatusPending ReplicationStatus = "PENDING"
+	// ReplicationStatusComplete indicates replication completed ok
+	ReplicationStatusComplete ReplicationStatus = "COMPLETE"
+	// ReplicationStatusFailed indicates replication failed
+	ReplicationStatusFailed ReplicationStatus = "FAILED"
+	// ReplicationStatusReplica indicates object is a replica of a source
+	ReplicationStatusReplica ReplicationStatus = "REPLICA"
+)
+
+// Empty returns true if no replication status set.
+func (r ReplicationStatus) Empty() bool {
+	return r == ""
+}
 
 // PutObjectOptions represents options specified by user for PutObject call
 type PutObjectOptions struct {
 	UserMetadata            map[string]string
+	UserTags                map[string]string
 	Progress                io.Reader
 	ContentType             string
 	ContentEncoding         string
 	ContentDisposition      string
 	ContentLanguage         string
 	CacheControl            string
+	Mode                    RetentionMode
+	RetainUntilDate         time.Time
 	ServerSideEncryption    encrypt.ServerSide
 	NumThreads              uint
 	StorageClass            string
 	WebsiteRedirectLocation string
+	PartSize                uint64
+	LegalHold               LegalHoldStatus
+	SendContentMd5          bool
+	DisableMultipart        bool
+	ReplicationVersionID    string
+	ReplicationStatus       ReplicationStatus
+	ReplicationMTime        time.Time
 }
 
 // getNumThreads - gets the number of threads to be used in the multipart
@@ -62,37 +93,64 @@ func (opts PutObjectOptions) getNumThreads() (numThreads int) {
 func (opts PutObjectOptions) Header() (header http.Header) {
 	header = make(http.Header)
 
-	if opts.ContentType != "" {
-		header["Content-Type"] = []string{opts.ContentType}
-	} else {
-		header["Content-Type"] = []string{"application/octet-stream"}
+	contentType := opts.ContentType
+	if contentType == "" {
+		contentType = "application/octet-stream"
 	}
+	header.Set("Content-Type", contentType)
+
 	if opts.ContentEncoding != "" {
-		header["Content-Encoding"] = []string{opts.ContentEncoding}
+		header.Set("Content-Encoding", opts.ContentEncoding)
 	}
 	if opts.ContentDisposition != "" {
-		header["Content-Disposition"] = []string{opts.ContentDisposition}
+		header.Set("Content-Disposition", opts.ContentDisposition)
 	}
 	if opts.ContentLanguage != "" {
-		header["Content-Language"] = []string{opts.ContentLanguage}
+		header.Set("Content-Language", opts.ContentLanguage)
 	}
 	if opts.CacheControl != "" {
-		header["Cache-Control"] = []string{opts.CacheControl}
+		header.Set("Cache-Control", opts.CacheControl)
 	}
+
+	if opts.Mode != "" {
+		header.Set(amzLockMode, opts.Mode.String())
+	}
+
+	if !opts.RetainUntilDate.IsZero() {
+		header.Set("X-Amz-Object-Lock-Retain-Until-Date", opts.RetainUntilDate.Format(time.RFC3339))
+	}
+
+	if opts.LegalHold != "" {
+		header.Set(amzLegalHoldHeader, opts.LegalHold.String())
+	}
+
 	if opts.ServerSideEncryption != nil {
 		opts.ServerSideEncryption.Marshal(header)
 	}
+
 	if opts.StorageClass != "" {
-		header[amzStorageClass] = []string{opts.StorageClass}
+		header.Set(amzStorageClass, opts.StorageClass)
 	}
+
 	if opts.WebsiteRedirectLocation != "" {
-		header[amzWebsiteRedirectLocation] = []string{opts.WebsiteRedirectLocation}
+		header.Set(amzWebsiteRedirectLocation, opts.WebsiteRedirectLocation)
 	}
+
+	if !opts.ReplicationStatus.Empty() {
+		header.Set(amzBucketReplicationStatus, string(opts.ReplicationStatus))
+	}
+	if !opts.ReplicationMTime.IsZero() {
+		header.Set(minIOBucketReplicationSourceMTime, opts.ReplicationMTime.Format(time.RFC3339))
+	}
+	if len(opts.UserTags) != 0 {
+		header.Set(amzTaggingHeader, s3utils.TagEncode(opts.UserTags))
+	}
+
 	for k, v := range opts.UserMetadata {
-		if !isAmzHeader(k) && !isStandardHeader(k) && !isStorageClassHeader(k) {
-			header["X-Amz-Meta-"+k] = []string{v}
+		if isAmzHeader(k) || isStandardHeader(k) || isStorageClassHeader(k) {
+			header.Set(k, v)
 		} else {
-			header[k] = []string{v}
+			header.Set("x-amz-meta-"+k, v)
 		}
 	}
 	return
@@ -102,11 +160,17 @@ func (opts PutObjectOptions) Header() (header http.Header) {
 func (opts PutObjectOptions) validate() (err error) {
 	for k, v := range opts.UserMetadata {
 		if !httpguts.ValidHeaderFieldName(k) || isStandardHeader(k) || isSSEHeader(k) || isStorageClassHeader(k) {
-			return ErrInvalidArgument(k + " unsupported user defined metadata name")
+			return errInvalidArgument(k + " unsupported user defined metadata name")
 		}
 		if !httpguts.ValidHeaderFieldValue(v) {
-			return ErrInvalidArgument(v + " unsupported user defined metadata value")
+			return errInvalidArgument(v + " unsupported user defined metadata value")
 		}
+	}
+	if opts.Mode != "" && !opts.Mode.IsValid() {
+		return errInvalidArgument(opts.Mode.String() + " unsupported retention mode")
+	}
+	if opts.LegalHold != "" && !opts.LegalHold.IsValid() {
+		return errInvalidArgument(opts.LegalHold.String() + " unsupported legal-hold status")
 	}
 	return nil
 }
@@ -123,54 +187,68 @@ func (a completedParts) Less(i, j int) bool { return a[i].PartNumber < a[j].Part
 //
 // You must have WRITE permissions on a bucket to create an object.
 //
-//  - For size smaller than 64MiB PutObject automatically does a
+//  - For size smaller than 128MiB PutObject automatically does a
 //    single atomic Put operation.
-//  - For size larger than 64MiB PutObject automatically does a
+//  - For size larger than 128MiB PutObject automatically does a
 //    multipart Put operation.
 //  - For size input as -1 PutObject does a multipart Put operation
 //    until input stream reaches EOF. Maximum object size that can
 //    be uploaded through this operation will be 5TiB.
-func (c Client) PutObject(bucketName, objectName string, reader io.Reader, objectSize int64,
-	opts PutObjectOptions) (n int64, err error) {
-	return c.PutObjectWithContext(context.Background(), bucketName, objectName, reader, objectSize, opts)
+func (c Client) PutObject(ctx context.Context, bucketName, objectName string, reader io.Reader, objectSize int64,
+	opts PutObjectOptions) (info UploadInfo, err error) {
+	if objectSize < 0 && opts.DisableMultipart {
+		return UploadInfo{}, errors.New("object size must be provided with disable multipart upload")
+	}
+
+	err = opts.validate()
+	if err != nil {
+		return UploadInfo{}, err
+	}
+
+	return c.putObjectCommon(ctx, bucketName, objectName, reader, objectSize, opts)
 }
 
-func (c Client) putObjectCommon(ctx context.Context, bucketName, objectName string, reader io.Reader, size int64, opts PutObjectOptions) (n int64, err error) {
+func (c Client) putObjectCommon(ctx context.Context, bucketName, objectName string, reader io.Reader, size int64, opts PutObjectOptions) (info UploadInfo, err error) {
 	// Check for largest object size allowed.
 	if size > int64(maxMultipartPutObjectSize) {
-		return 0, ErrEntityTooLarge(size, maxMultipartPutObjectSize, bucketName, objectName)
+		return UploadInfo{}, errEntityTooLarge(size, maxMultipartPutObjectSize, bucketName, objectName)
 	}
 
 	// NOTE: Streaming signature is not supported by GCS.
 	if s3utils.IsGoogleEndpoint(*c.endpointURL) {
-		// Do not compute MD5 for Google Cloud Storage.
-		return c.putObjectNoChecksum(ctx, bucketName, objectName, reader, size, opts)
+		return c.putObject(ctx, bucketName, objectName, reader, size, opts)
+	}
+
+	partSize := opts.PartSize
+	if opts.PartSize == 0 {
+		partSize = minPartSize
 	}
 
 	if c.overrideSignerType.IsV2() {
-		if size >= 0 && size < minPartSize {
-			return c.putObjectNoChecksum(ctx, bucketName, objectName, reader, size, opts)
+		if size >= 0 && size < int64(partSize) || opts.DisableMultipart {
+			return c.putObject(ctx, bucketName, objectName, reader, size, opts)
 		}
 		return c.putObjectMultipart(ctx, bucketName, objectName, reader, size, opts)
 	}
+
 	if size < 0 {
 		return c.putObjectMultipartStreamNoLength(ctx, bucketName, objectName, reader, opts)
 	}
 
-	if size < minPartSize {
-		return c.putObjectNoChecksum(ctx, bucketName, objectName, reader, size, opts)
+	if size < int64(partSize) || opts.DisableMultipart {
+		return c.putObject(ctx, bucketName, objectName, reader, size, opts)
 	}
-	// For all sizes greater than 64MiB do multipart.
+
 	return c.putObjectMultipartStream(ctx, bucketName, objectName, reader, size, opts)
 }
 
-func (c Client) putObjectMultipartStreamNoLength(ctx context.Context, bucketName, objectName string, reader io.Reader, opts PutObjectOptions) (n int64, err error) {
+func (c Client) putObjectMultipartStreamNoLength(ctx context.Context, bucketName, objectName string, reader io.Reader, opts PutObjectOptions) (info UploadInfo, err error) {
 	// Input validation.
 	if err = s3utils.CheckValidBucketName(bucketName); err != nil {
-		return 0, err
+		return UploadInfo{}, err
 	}
 	if err = s3utils.CheckValidObjectName(objectName); err != nil {
-		return 0, err
+		return UploadInfo{}, err
 	}
 
 	// Total data read and written to server. should be equal to
@@ -181,14 +259,14 @@ func (c Client) putObjectMultipartStreamNoLength(ctx context.Context, bucketName
 	var complMultipartUpload completeMultipartUpload
 
 	// Calculate the optimal parts info for a given size.
-	totalPartsCount, partSize, _, err := optimalPartInfo(-1)
+	totalPartsCount, partSize, _, err := optimalPartInfo(-1, opts.PartSize)
 	if err != nil {
-		return 0, err
+		return UploadInfo{}, err
 	}
 	// Initiate a new multipart upload.
 	uploadID, err := c.newUploadID(ctx, bucketName, objectName, opts)
 	if err != nil {
-		return 0, err
+		return UploadInfo{}, err
 	}
 
 	defer func() {
@@ -205,26 +283,35 @@ func (c Client) putObjectMultipartStreamNoLength(ctx context.Context, bucketName
 
 	// Create a buffer.
 	buf := make([]byte, partSize)
-	defer debug.FreeOSMemory()
 
 	for partNumber <= totalPartsCount {
-		length, rErr := io.ReadFull(reader, buf)
-		if rErr == io.EOF && partNumber > 1 {
+		length, rerr := readFull(reader, buf)
+		if rerr == io.EOF && partNumber > 1 {
 			break
 		}
-		if rErr != nil && rErr != io.ErrUnexpectedEOF && rErr != io.EOF {
-			return 0, rErr
+
+		if rerr != nil && rerr != io.ErrUnexpectedEOF && rerr != io.EOF {
+			return UploadInfo{}, rerr
 		}
+
+		var md5Base64 string
+		if opts.SendContentMd5 {
+			// Calculate md5sum.
+			hash := c.md5Hasher()
+			hash.Write(buf[:length])
+			md5Base64 = base64.StdEncoding.EncodeToString(hash.Sum(nil))
+			hash.Close()
+		}
+
 		// Update progress reader appropriately to the latest offset
 		// as we read from the source.
 		rd := newHook(bytes.NewReader(buf[:length]), opts.Progress)
 
 		// Proceed to upload the part.
-		var objPart ObjectPart
-		objPart, err = c.uploadPart(ctx, bucketName, objectName, uploadID, rd, partNumber,
-			"", "", int64(length), opts.ServerSideEncryption)
-		if err != nil {
-			return totalUploadedSize, err
+		objPart, uerr := c.uploadPart(ctx, bucketName, objectName, uploadID, rd, partNumber,
+			md5Base64, "", int64(length), opts.ServerSideEncryption)
+		if uerr != nil {
+			return UploadInfo{}, uerr
 		}
 
 		// Save successfully uploaded part metadata.
@@ -238,7 +325,7 @@ func (c Client) putObjectMultipartStreamNoLength(ctx context.Context, bucketName
 
 		// For unknown size, Read EOF we break away.
 		// We do not have to upload till totalPartsCount.
-		if rErr == io.EOF {
+		if rerr == io.EOF {
 			break
 		}
 	}
@@ -248,7 +335,7 @@ func (c Client) putObjectMultipartStreamNoLength(ctx context.Context, bucketName
 	for i := 1; i < partNumber; i++ {
 		part, ok := partsInfo[i]
 		if !ok {
-			return 0, ErrInvalidArgument(fmt.Sprintf("Missing part number %d", i))
+			return UploadInfo{}, errInvalidArgument(fmt.Sprintf("Missing part number %d", i))
 		}
 		complMultipartUpload.Parts = append(complMultipartUpload.Parts, CompletePart{
 			ETag:       part.ETag,
@@ -258,10 +345,12 @@ func (c Client) putObjectMultipartStreamNoLength(ctx context.Context, bucketName
 
 	// Sort all completed parts.
 	sort.Sort(completedParts(complMultipartUpload.Parts))
-	if _, err = c.completeMultipartUpload(ctx, bucketName, objectName, uploadID, complMultipartUpload); err != nil {
-		return totalUploadedSize, err
+
+	uploadInfo, err := c.completeMultipartUpload(ctx, bucketName, objectName, uploadID, complMultipartUpload)
+	if err != nil {
+		return UploadInfo{}, err
 	}
 
-	// Return final size.
-	return totalUploadedSize, nil
+	uploadInfo.Size = totalUploadedSize
+	return uploadInfo, nil
 }

@@ -1,8 +1,8 @@
 // +build ignore
 
 /*
- * Minio Go Library for Amazon S3 Compatible Cloud Storage
- * Copyright 2015-2017 Minio, Inc.
+ * MinIO Go Library for Amazon S3 Compatible Cloud Storage
+ * Copyright 2015-2017 MinIO, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,9 +20,11 @@
 package main
 
 import (
+	"context"
 	"log"
 
-	"github.com/minio/minio-go"
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 )
 
 func main() {
@@ -34,11 +36,14 @@ func main() {
 
 	// New returns an Amazon S3 compatible client object. API compatibility (v2 or v4) is automatically
 	// determined based on the Endpoint value.
-	s3Client, err := minio.New("s3.amazonaws.com", "YOUR-ACCESSKEYID", "YOUR-SECRETACCESSKEY", true)
+	s3Client, err := minio.New("s3.amazonaws.com", &minio.Options{
+		Creds:  credentials.NewStaticV4("YOUR-ACCESSKEYID", "YOUR-SECRETACCESSKEY", ""),
+		Secure: true,
+	})
 	if err != nil {
 		log.Fatalln(err)
 	}
-	stat, err := s3Client.StatObject("my-bucketname", "my-objectname", minio.StatObjectOptions{})
+	stat, err := s3Client.StatObject(context.Background(), "my-bucketname", "my-objectname", minio.StatObjectOptions{})
 	if err != nil {
 		log.Fatalln(err)
 	}

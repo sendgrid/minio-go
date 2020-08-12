@@ -1,8 +1,8 @@
 // +build ignore
 
 /*
- * Minio Go Library for Amazon S3 Compatible Cloud Storage
- * Copyright 2017 Minio, Inc.
+ * MinIO Go Library for Amazon S3 Compatible Cloud Storage
+ * Copyright 2017 MinIO, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,12 +21,13 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"io/ioutil"
 	"log"
 
-	"github.com/minio/minio-go/pkg/encrypt"
-
-	minio "github.com/minio/minio-go"
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
+	"github.com/minio/minio-go/v7/pkg/encrypt"
 )
 
 func main() {
@@ -35,7 +36,10 @@ func main() {
 
 	// New returns an Amazon S3 compatible client object. API compatibility (v2 or v4) is automatically
 	// determined based on the Endpoint value.
-	minioClient, err := minio.New("s3.amazonaws.com", "YOUR-ACCESSKEYID", "YOUR-SECRETACCESSKEY", true)
+	minioClient, err := minio.New("s3.amazonaws.com", &minio.Options{
+		Creds:  credentials.NewStaticV4("YOUR-ACCESSKEYID", "YOUR-SECRETACCESSKEY", ""),
+		Secure: true,
+	})
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -45,14 +49,14 @@ func main() {
 	object := []byte("Hello again")
 
 	encryption := encrypt.DefaultPBKDF([]byte("my secret password"), []byte(bucketName+objectName))
-	_, err = minioClient.PutObject(bucketName, objectName, bytes.NewReader(object), int64(len(object)), minio.PutObjectOptions{
+	_, err = minioClient.PutObject(context.Background(), bucketName, objectName, bytes.NewReader(object), int64(len(object)), minio.PutObjectOptions{
 		ServerSideEncryption: encryption,
 	})
 	if err != nil {
 		log.Fatalln(err)
 	}
 
-	reader, err := minioClient.GetObject(bucketName, objectName, minio.GetObjectOptions{ServerSideEncryption: encryption})
+	reader, err := minioClient.GetObject(context.Background(), bucketName, objectName, minio.GetObjectOptions{ServerSideEncryption: encryption})
 	if err != nil {
 		log.Fatalln(err)
 	}

@@ -1,6 +1,6 @@
 /*
- * Minio Go Library for Amazon S3 Compatible Cloud Storage
- * Copyright 2015-2017 Minio, Inc.
+ * MinIO Go Library for Amazon S3 Compatible Cloud Storage
+ * Copyright 2015-2017 MinIO, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,14 +18,16 @@
 package minio
 
 import (
+	"context"
+	"net"
 	"net/http"
 	"net/url"
 	"path"
 	"sync"
 
-	"github.com/minio/minio-go/pkg/credentials"
-	"github.com/minio/minio-go/pkg/s3signer"
-	"github.com/minio/minio-go/pkg/s3utils"
+	"github.com/minio/minio-go/v7/pkg/credentials"
+	"github.com/minio/minio-go/v7/pkg/s3utils"
+	"github.com/minio/minio-go/v7/pkg/signer"
 )
 
 // bucketLocationCache - Provides simple mechanism to hold bucket
@@ -71,16 +73,16 @@ func (r *bucketLocationCache) Delete(bucketName string) {
 
 // GetBucketLocation - get location for the bucket name from location cache, if not
 // fetch freshly by making a new request.
-func (c Client) GetBucketLocation(bucketName string) (string, error) {
+func (c Client) GetBucketLocation(ctx context.Context, bucketName string) (string, error) {
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
 		return "", err
 	}
-	return c.getBucketLocation(bucketName)
+	return c.getBucketLocation(ctx, bucketName)
 }
 
 // getBucketLocation - Get location for the bucketName from location map cache, if not
 // fetch freshly by making a new request.
-func (c Client) getBucketLocation(bucketName string) (string, error) {
+func (c Client) getBucketLocation(ctx context.Context, bucketName string) (string, error) {
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
 		return "", err
 	}
@@ -123,8 +125,20 @@ func processBucketLocationResponse(resp *http.Response, bucketName string) (buck
 			// For access denied error, it could be an anonymous
 			// request. Move forward and let the top level callers
 			// succeed if possible based on their policy.
-			if errResp.Code == "AccessDenied" {
-				return "us-east-1", nil
+			switch errResp.Code {
+			case "NotImplemented":
+				if errResp.Server == "AmazonSnowball" {
+					return "snowball", nil
+				}
+			case "AuthorizationHeaderMalformed":
+				fallthrough
+			case "InvalidRegion":
+				fallthrough
+			case "AccessDenied":
+				if errResp.Region == "" {
+					return "us-east-1", nil
+				}
+				return errResp.Region, nil
 			}
 			return "", err
 		}
@@ -161,12 +175,30 @@ func (c Client) getBucketLocationRequest(bucketName string) (*http.Request, erro
 	urlValues.Set("location", "")
 
 	// Set get bucket location always as path style.
-	targetURL := c.endpointURL
-	targetURL.Path = path.Join(bucketName, "") + "/"
-	targetURL.RawQuery = urlValues.Encode()
+	targetURL := *c.endpointURL
+
+	// as it works in makeTargetURL method from api.go file
+	if h, p, err := net.SplitHostPort(targetURL.Host); err == nil {
+		if targetURL.Scheme == "http" && p == "80" || targetURL.Scheme == "https" && p == "443" {
+			targetURL.Host = h
+		}
+	}
+
+	isVirtualHost := s3utils.IsVirtualHostSupported(targetURL, bucketName)
+
+	var urlStr string
+
+	//only support Aliyun OSS for virtual hosted path,  compatible  Amazon & Google Endpoint
+	if isVirtualHost && s3utils.IsAliyunOSSEndpoint(targetURL) {
+		urlStr = c.endpointURL.Scheme + "://" + bucketName + "." + targetURL.Host + "/?location"
+	} else {
+		targetURL.Path = path.Join(bucketName, "") + "/"
+		targetURL.RawQuery = urlValues.Encode()
+		urlStr = targetURL.String()
+	}
 
 	// Get a new HTTP request for the method.
-	req, err := http.NewRequest("GET", targetURL.String(), nil)
+	req, err := http.NewRequest(http.MethodGet, urlStr, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -205,7 +237,7 @@ func (c Client) getBucketLocationRequest(bucketName string) (*http.Request, erro
 	if signerType.IsV2() {
 		// Get Bucket Location calls should be always path style
 		isVirtualHost := false
-		req = s3signer.SignV2(*req, accessKeyID, secretAccessKey, isVirtualHost)
+		req = signer.SignV2(*req, accessKeyID, secretAccessKey, isVirtualHost)
 		return req, nil
 	}
 
@@ -216,6 +248,6 @@ func (c Client) getBucketLocationRequest(bucketName string) (*http.Request, erro
 	}
 
 	req.Header.Set("X-Amz-Content-Sha256", contentSha256)
-	req = s3signer.SignV4(*req, accessKeyID, secretAccessKey, sessionToken, "us-east-1")
+	req = signer.SignV4(*req, accessKeyID, secretAccessKey, sessionToken, "us-east-1")
 	return req, nil
 }

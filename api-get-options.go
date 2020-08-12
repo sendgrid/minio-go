@@ -1,6 +1,6 @@
 /*
- * Minio Go Library for Amazon S3 Compatible Cloud Storage
- * Copyright 2015-2017 Minio, Inc.
+ * MinIO Go Library for Amazon S3 Compatible Cloud Storage
+ * Copyright 2015-2020 MinIO, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/minio/minio-go/pkg/encrypt"
+	"github.com/minio/minio-go/v7/pkg/encrypt"
 )
 
 // GetObjectOptions are used to specify additional headers or options
@@ -30,13 +30,12 @@ import (
 type GetObjectOptions struct {
 	headers              map[string]string
 	ServerSideEncryption encrypt.ServerSide
+	VersionID            string
 }
 
 // StatObjectOptions are used to specify additional headers or options
 // during GET info/stat requests.
-type StatObjectOptions struct {
-	GetObjectOptions
-}
+type StatObjectOptions = GetObjectOptions
 
 // Header returns the http.Header representation of the GET options.
 func (o GetObjectOptions) Header() http.Header {
@@ -63,7 +62,7 @@ func (o *GetObjectOptions) Set(key, value string) {
 // SetMatchETag - set match etag.
 func (o *GetObjectOptions) SetMatchETag(etag string) error {
 	if etag == "" {
-		return ErrInvalidArgument("ETag cannot be empty.")
+		return errInvalidArgument("ETag cannot be empty.")
 	}
 	o.Set("If-Match", "\""+etag+"\"")
 	return nil
@@ -72,7 +71,7 @@ func (o *GetObjectOptions) SetMatchETag(etag string) error {
 // SetMatchETagExcept - set match etag except.
 func (o *GetObjectOptions) SetMatchETagExcept(etag string) error {
 	if etag == "" {
-		return ErrInvalidArgument("ETag cannot be empty.")
+		return errInvalidArgument("ETag cannot be empty.")
 	}
 	o.Set("If-None-Match", "\""+etag+"\"")
 	return nil
@@ -81,7 +80,7 @@ func (o *GetObjectOptions) SetMatchETagExcept(etag string) error {
 // SetUnmodified - set unmodified time since.
 func (o *GetObjectOptions) SetUnmodified(modTime time.Time) error {
 	if modTime.IsZero() {
-		return ErrInvalidArgument("Modified since cannot be empty.")
+		return errInvalidArgument("Modified since cannot be empty.")
 	}
 	o.Set("If-Unmodified-Since", modTime.Format(http.TimeFormat))
 	return nil
@@ -90,7 +89,7 @@ func (o *GetObjectOptions) SetUnmodified(modTime time.Time) error {
 // SetModified - set modified time since.
 func (o *GetObjectOptions) SetModified(modTime time.Time) error {
 	if modTime.IsZero() {
-		return ErrInvalidArgument("Modified since cannot be empty.")
+		return errInvalidArgument("Modified since cannot be empty.")
 	}
 	o.Set("If-Modified-Since", modTime.Format(http.TimeFormat))
 	return nil
@@ -119,7 +118,7 @@ func (o *GetObjectOptions) SetRange(start, end int64) error {
 		// bytes=-3-0
 		// bytes=-3--2
 		// are invalid.
-		return ErrInvalidArgument(
+		return errInvalidArgument(
 			fmt.Sprintf(
 				"Invalid range specified: start=%d end=%d",
 				start, end))

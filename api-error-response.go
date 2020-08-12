@@ -1,6 +1,6 @@
 /*
- * Minio Go Library for Amazon S3 Compatible Cloud Storage
- * Copyright 2015-2017 Minio, Inc.
+ * MinIO Go Library for Amazon S3 Compatible Cloud Storage
+ * Copyright 2015-2020 MinIO, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -51,6 +51,9 @@ type ErrorResponse struct {
 	// only in HEAD bucket and ListObjects response.
 	Region string
 
+	// Captures the server string returned in response header.
+	Server string
+
 	// Underlying HTTP status code for the returned error
 	StatusCode int `xml:"-" json:"-"`
 }
@@ -60,7 +63,7 @@ type ErrorResponse struct {
 //
 // For example:
 //
-//   import s3 "github.com/minio/minio-go"
+//   import s3 "github.com/minio/minio-go/v7"
 //   ...
 //   ...
 //   reader, stat, err := s3.GetObject(...)
@@ -100,16 +103,17 @@ const (
 func httpRespToErrorResponse(resp *http.Response, bucketName, objectName string) error {
 	if resp == nil {
 		msg := "Response is empty. " + reportIssue
-		return ErrInvalidArgument(msg)
+		return errInvalidArgument(msg)
 	}
 
 	errResp := ErrorResponse{
 		StatusCode: resp.StatusCode,
+		Server:     resp.Header.Get("Server"),
 	}
 
 	err := xmlDecoder(resp.Body, &errResp)
 	// Xml decoding failed with no body, fall back to HTTP headers.
-	if err != nil || errResp.Message == ""  {
+	if err != nil || errResp.Message == "" {
 		switch resp.StatusCode {
 		case http.StatusNotFound:
 			if objectName == "" {
@@ -179,8 +183,8 @@ func httpRespToErrorResponse(resp *http.Response, bucketName, objectName string)
 	return errResp
 }
 
-// ErrTransferAccelerationBucket - bucket name is invalid to be used with transfer acceleration.
-func ErrTransferAccelerationBucket(bucketName string) error {
+// errTransferAccelerationBucket - bucket name is invalid to be used with transfer acceleration.
+func errTransferAccelerationBucket(bucketName string) error {
 	return ErrorResponse{
 		StatusCode: http.StatusBadRequest,
 		Code:       "InvalidArgument",
@@ -189,8 +193,8 @@ func ErrTransferAccelerationBucket(bucketName string) error {
 	}
 }
 
-// ErrEntityTooLarge - Input size is larger than supported maximum.
-func ErrEntityTooLarge(totalSize, maxObjectSize int64, bucketName, objectName string) error {
+// errEntityTooLarge - Input size is larger than supported maximum.
+func errEntityTooLarge(totalSize, maxObjectSize int64, bucketName, objectName string) error {
 	msg := fmt.Sprintf("Your proposed upload size ‘%d’ exceeds the maximum allowed object size ‘%d’ for single PUT operation.", totalSize, maxObjectSize)
 	return ErrorResponse{
 		StatusCode: http.StatusBadRequest,
@@ -201,8 +205,8 @@ func ErrEntityTooLarge(totalSize, maxObjectSize int64, bucketName, objectName st
 	}
 }
 
-// ErrEntityTooSmall - Input size is smaller than supported minimum.
-func ErrEntityTooSmall(totalSize int64, bucketName, objectName string) error {
+// errEntityTooSmall - Input size is smaller than supported minimum.
+func errEntityTooSmall(totalSize int64, bucketName, objectName string) error {
 	msg := fmt.Sprintf("Your proposed upload size ‘%d’ is below the minimum allowed object size ‘0B’ for single PUT operation.", totalSize)
 	return ErrorResponse{
 		StatusCode: http.StatusBadRequest,
@@ -213,8 +217,8 @@ func ErrEntityTooSmall(totalSize int64, bucketName, objectName string) error {
 	}
 }
 
-// ErrUnexpectedEOF - Unexpected end of file reached.
-func ErrUnexpectedEOF(totalRead, totalSize int64, bucketName, objectName string) error {
+// errUnexpectedEOF - Unexpected end of file reached.
+func errUnexpectedEOF(totalRead, totalSize int64, bucketName, objectName string) error {
 	msg := fmt.Sprintf("Data read ‘%d’ is not equal to the size ‘%d’ of the input Reader.", totalRead, totalSize)
 	return ErrorResponse{
 		StatusCode: http.StatusBadRequest,
@@ -225,8 +229,8 @@ func ErrUnexpectedEOF(totalRead, totalSize int64, bucketName, objectName string)
 	}
 }
 
-// ErrInvalidBucketName - Invalid bucket name response.
-func ErrInvalidBucketName(message string) error {
+// errInvalidBucketName - Invalid bucket name response.
+func errInvalidBucketName(message string) error {
 	return ErrorResponse{
 		StatusCode: http.StatusBadRequest,
 		Code:       "InvalidBucketName",
@@ -235,8 +239,8 @@ func ErrInvalidBucketName(message string) error {
 	}
 }
 
-// ErrInvalidObjectName - Invalid object name response.
-func ErrInvalidObjectName(message string) error {
+// errInvalidObjectName - Invalid object name response.
+func errInvalidObjectName(message string) error {
 	return ErrorResponse{
 		StatusCode: http.StatusNotFound,
 		Code:       "NoSuchKey",
@@ -245,12 +249,8 @@ func ErrInvalidObjectName(message string) error {
 	}
 }
 
-// ErrInvalidObjectPrefix - Invalid object prefix response is
-// similar to object name response.
-var ErrInvalidObjectPrefix = ErrInvalidObjectName
-
-// ErrInvalidArgument - Invalid argument response.
-func ErrInvalidArgument(message string) error {
+// errInvalidArgument - Invalid argument response.
+func errInvalidArgument(message string) error {
 	return ErrorResponse{
 		StatusCode: http.StatusBadRequest,
 		Code:       "InvalidArgument",
@@ -259,20 +259,9 @@ func ErrInvalidArgument(message string) error {
 	}
 }
 
-// ErrNoSuchBucketPolicy - No Such Bucket Policy response
-// The specified bucket does not have a bucket policy.
-func ErrNoSuchBucketPolicy(message string) error {
-	return ErrorResponse{
-		StatusCode: http.StatusNotFound,
-		Code:       "NoSuchBucketPolicy",
-		Message:    message,
-		RequestID:  "minio",
-	}
-}
-
-// ErrAPINotSupported - API not supported response
+// errAPINotSupported - API not supported response
 // The specified API call is not supported
-func ErrAPINotSupported(message string) error {
+func errAPINotSupported(message string) error {
 	return ErrorResponse{
 		StatusCode: http.StatusNotImplemented,
 		Code:       "APINotSupported",
